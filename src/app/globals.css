@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-bs-bg: #0a0a0f;
+  --color-bs-surface: #12121a;
+  --color-bs-card: #1a1a26;
+  --color-bs-border: #2a2a3a;
+  --color-bs-border-light: #3a3a4a;
+  --color-bs-text: #f0f0f5;
+  --color-bs-text-secondary: #8888a0;
+  --color-bs-text-muted: #55556a;
+  --color-bs-accent: #4a6cf7;
+  --color-bs-accent-hover: #5b7df8;
+  --color-bs-green: #2ecc71;
+  --color-bs-green-dark: #27ae60;
+  --color-bs-orange: #f39c12;
+  --color-bs-red: #e74c3c;
+  --color-bs-purple: #9b59b6;
+  --color-bs-cyan: #1abc9c;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  background: var(--color-bs-bg);
+  color: var(--color-bs-text);
+}
+
+body {
+  background: var(--color-bs-bg);
+  color: var(--color-bs-text);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+input, textarea, select {
+  background: var(--color-bs-surface);
+  border: 1px solid var(--color-bs-border);
+  color: var(--color-bs-text);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--color-bs-accent);
+  box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.15);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--color-bs-text-muted);
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-bs-border); border-radius: 4px; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+.animate-slide-up { animation: slideUp 0.3s ease-out; }
