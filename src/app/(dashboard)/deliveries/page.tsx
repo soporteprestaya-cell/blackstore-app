@@ -2,106 +2,172 @@
 
 import { useState, useMemo } from 'react';
 import { useAppStore } from '@/lib/store';
-import { DEMO_USERS, DEMO_ORDERS } from '@/lib/demo-data';
+import { DEMO_USERS } from '@/lib/demo-data';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
-import { formatRD } from '@/lib/utils';
-import type { CommissionPayment } from '@/lib/types';
+import { formatRD, formatDate } from '@/lib/utils';
+import type { CommissionPayment, Order } from '@/lib/types';
 import {
   Truck, Star, Phone, UserPlus, DollarSign, CheckCircle,
-  History, ChevronDown, ChevronUp, Banknote,
+  History, ChevronDown, ChevronUp, Banknote, AlertTriangle,
+  HelpCircle, Package, ArrowDownRight, ArrowUpRight, Minus,
 } from 'lucide-react';
 
-const COMMISSION_PER_DELIVERY = 150;
+function groupByDay(orders: Order[]) {
+  const groups: Record<string, Order[]> = {};
+  for (const o of orders) {
+    const day = new Date(o.updated_at || o.created_at).toLocaleDateString('es-DO', {
+      weekday: 'short', day: 'numeric', month: 'short',
+    });
+    if (!groups[day]) groups[day] = [];
+    groups[day].push(o);
+  }
+  return groups;
+}
 
 export default function DeliveriesPage() {
-  const { commissionPayments, addCommissionPayment, paidOrderIds, markOrdersCommissionPaid, user } = useAppStore();
+  const { orders, commissionPayments, addCommissionPayment, addNotification, paidOrderIds, markOrdersCommissionPaid, user, teamMembers, deliveryOnline } = useAppStore();
   const [showAdd, setShowAdd] = useState(false);
-  const [payingUserId, setPayingUserId] = useState<string | null>(null);
+  const [cuadreUserId, setCuadreUserId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
-  const deliveryUsers = DEMO_USERS.filter((u) => u.role === 'delivery');
+  const [showHelp, setShowHelp] = useState(false);
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 
-  const allOrders = DEMO_ORDERS;
+  const allUsers = [...DEMO_USERS, ...teamMembers.filter((m) => !DEMO_USERS.some((d) => d.id === m.id))];
+  const deliveryUsers = allUsers.filter((u) => u.role === 'delivery');
 
-  const pendingCommissions = useMemo(() => {
-    const map: Record<string, { orderIds: string[]; amount: number; count: number }> = {};
+  const cuadreData = useMemo(() => {
+    const map: Record<string, {
+      cashOrders: Order[];
+      transferOrders: Order[];
+      cashCollected: number;
+      commissionTotal: number;
+      oweToStore: number;
+      storeOwes: number;
+      net: number;
+      netLabel: string;
+      allOrderIds: string[];
+    }> = {};
+
     for (const u of deliveryUsers) {
-      const unpaidOrders = allOrders.filter(
+      const unpaid = orders.filter(
         (o) =>
           o.assigned_delivery_id === u.id &&
           ['delivered', 'completed'].includes(o.status) &&
           !paidOrderIds.includes(o.id)
       );
+
+      const cashOrders = unpaid.filter((o) => o.payment_method === 'cash');
+      const transferOrders = unpaid.filter((o) => o.payment_method !== 'cash');
+
+      const cashCollected = cashOrders.reduce((s, o) => s + o.total, 0);
+      const cashCommission = cashOrders.reduce((s, o) => s + (o.delivery_fee || 0), 0);
+      const transferCommission = transferOrders.reduce((s, o) => s + (o.delivery_fee || 0), 0);
+      const commissionTotal = cashCommission + transferCommission;
+
+      const oweToStore = cashCollected - cashCommission;
+      const storeOwes = transferCommission;
+      const net = oweToStore - storeOwes;
+
       map[u.id] = {
-        orderIds: unpaidOrders.map((o) => o.id),
-        amount: unpaidOrders.length * COMMISSION_PER_DELIVERY,
-        count: unpaidOrders.length,
+        cashOrders,
+        transferOrders,
+        cashCollected,
+        commissionTotal,
+        oweToStore,
+        storeOwes,
+        net,
+        netLabel: net > 0 ? 'Delivery debe a tienda' : net < 0 ? 'Tienda debe a delivery' : 'Cuadrado',
+        allOrderIds: unpaid.map((o) => o.id),
       };
     }
     return map;
-  }, [deliveryUsers, allOrders, paidOrderIds]);
+  }, [deliveryUsers, orders, paidOrderIds]);
 
-  function handlePayCommission(deliveryUserId: string) {
-    const pending = pendingCommissions[deliveryUserId];
-    if (!pending || pending.count === 0) return;
+  function handleCuadre(deliveryUserId: string) {
+    const data = cuadreData[deliveryUserId];
+    if (!data || data.allOrderIds.length === 0) return;
 
     const deliveryUser = deliveryUsers.find((u) => u.id === deliveryUserId);
     const payment: CommissionPayment = {
       id: `cp-${Date.now()}`,
       delivery_user_id: deliveryUserId,
       delivery_user_name: deliveryUser?.name || '',
-      amount: pending.amount,
-      orders_paid: pending.orderIds,
+      amount: data.commissionTotal,
+      orders_paid: data.allOrderIds,
       paid_at: new Date().toISOString(),
       paid_by: user?.name || 'Admin',
+      confirmed_by_delivery: false,
     };
 
     addCommissionPayment(payment);
-    markOrdersCommissionPaid(pending.orderIds);
-    setPayingUserId(null);
+    markOrdersCommissionPaid(data.allOrderIds);
+
+    addNotification({
+      id: `n_cuadre_${Date.now()}`,
+      user_id: deliveryUserId,
+      type: 'payment_confirmed',
+      message: `Cuadre realizado: comisión ${formatRD(data.commissionTotal)} por ${data.allOrderIds.length} entregas. ${data.net > 0 ? `Entregaste ${formatRD(data.net)} a tienda.` : data.net < 0 ? `Tienda te pagó ${formatRD(Math.abs(data.net))}.` : 'Todo cuadrado.'}`,
+      read: false,
+      created_at: new Date().toISOString(),
+    });
+
+    setCuadreUserId(null);
   }
 
-  const totalPending = Object.values(pendingCommissions).reduce((s, p) => s + p.amount, 0);
-  const totalPaid = commissionPayments.reduce((s, p) => s + p.amount, 0);
+  function toggleDay(key: string) {
+    setExpandedDays((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  const totalNet = Object.values(cuadreData).reduce((s, d) => s + d.net, 0);
 
   return (
     <div className="px-4 py-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Equipo Delivery</h2>
-        <Button size="sm" onClick={() => setShowAdd(true)}>
-          <UserPlus size={14} />
-          Agregar
-        </Button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setShowHelp(true)} className="p-2 hover:bg-bs-card rounded-xl transition-colors">
+            <HelpCircle size={16} className="text-bs-text-muted" />
+          </button>
+          <Button size="sm" onClick={() => setShowAdd(true)}>
+            <UserPlus size={14} />
+            Agregar
+          </Button>
+        </div>
       </div>
 
-      {/* Commission Summary */}
+      {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-bs-card border border-bs-border rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-bs-green">{deliveryUsers.filter((u) => u.is_active).length}</div>
-          <div className="text-[9px] text-bs-text-muted uppercase">Activos</div>
+          <div className="text-xl font-bold text-bs-green">{deliveryUsers.filter((u) => deliveryOnline[u.id]).length}</div>
+          <div className="text-[9px] text-bs-text-muted uppercase">Conectados</div>
         </div>
         <div className="bg-bs-card border border-bs-border rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-bs-orange">{formatRD(totalPending)}</div>
-          <div className="text-[9px] text-bs-text-muted uppercase">Pendiente</div>
+          <div className={`text-xl font-bold ${totalNet > 0 ? 'text-bs-orange' : totalNet < 0 ? 'text-bs-accent' : 'text-bs-green'}`}>
+            {formatRD(Math.abs(totalNet))}
+          </div>
+          <div className="text-[9px] text-bs-text-muted uppercase">
+            {totalNet > 0 ? 'Te deben' : totalNet < 0 ? 'Debes pagar' : 'Cuadrado'}
+          </div>
         </div>
         <div className="bg-bs-card border border-bs-border rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-bs-accent">{formatRD(totalPaid)}</div>
-          <div className="text-[9px] text-bs-text-muted uppercase">Pagado</div>
+          <div className="text-xl font-bold text-bs-accent">{formatRD(commissionPayments.reduce((s, p) => s + p.amount, 0))}</div>
+          <div className="text-[9px] text-bs-text-muted uppercase">Pagado total</div>
         </div>
       </div>
 
-      {/* Delivery List with Commissions */}
+      {/* Delivery List */}
       <div className="space-y-3">
         {deliveryUsers.map((dUser) => {
-          const pending = pendingCommissions[dUser.id];
-          const activeOrders = allOrders.filter(
-            (o) => o.assigned_delivery_id === dUser.id && !['completed', 'cancelled'].includes(o.status)
+          const data = cuadreData[dUser.id];
+          const activeOrders = orders.filter(
+            (o) => o.assigned_delivery_id === dUser.id && !['completed', 'cancelled', 'delivered'].includes(o.status)
           );
           const isExpanded = expandedUser === dUser.id;
-          const userPayments = commissionPayments.filter((p) => p.delivery_user_id === dUser.id);
+          const dayGroups = groupByDay([...data.cashOrders, ...data.transferOrders]);
 
           return (
             <Card key={dUser.id}>
@@ -112,7 +178,7 @@ export default function DeliveriesPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-sm font-bold">{dUser.name}</span>
-                    {dUser.is_active ? (
+                    {deliveryOnline[dUser.id] ? (
                       <div className="flex items-center gap-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-bs-green animate-pulse" />
                         <span className="text-[9px] text-bs-green font-semibold">ACTIVO</span>
@@ -123,76 +189,130 @@ export default function DeliveriesPage() {
                   </div>
                   <div className="text-xs text-bs-text-muted mb-2">{dUser.phone}</div>
 
-                  {/* Commission Info */}
-                  <div className="grid grid-cols-2 gap-2 mb-2">
+                  {/* Cuadre Summary */}
+                  <div className="grid grid-cols-3 gap-1.5 mb-2">
                     <div className="bg-bs-surface px-2 py-1.5 rounded-lg text-center">
                       <div className="text-xs font-bold text-bs-accent">{activeOrders.length}</div>
                       <div className="text-[8px] text-bs-text-muted">En ruta</div>
                     </div>
                     <div className="bg-bs-surface px-2 py-1.5 rounded-lg text-center">
-                      <div className={`text-xs font-bold ${pending.amount > 0 ? 'text-bs-orange' : 'text-bs-green'}`}>
-                        {formatRD(pending.amount)}
+                      <div className="text-xs font-bold text-bs-cyan">{formatRD(data.commissionTotal)}</div>
+                      <div className="text-[8px] text-bs-text-muted">Comisión</div>
+                    </div>
+                    <div className="bg-bs-surface px-2 py-1.5 rounded-lg text-center">
+                      <div className={`text-xs font-bold ${data.net > 0 ? 'text-bs-orange' : data.net < 0 ? 'text-bs-red' : 'text-bs-green'}`}>
+                        {data.net === 0 ? '✓' : formatRD(Math.abs(data.net))}
                       </div>
                       <div className="text-[8px] text-bs-text-muted">
-                        {pending.count} {pending.count === 1 ? 'entrega' : 'entregas'} pend.
+                        {data.net > 0 ? 'Debe' : data.net < 0 ? 'Se le debe' : 'Cuadrado'}
                       </div>
                     </div>
                   </div>
 
-                  {/* Pay Button */}
-                  {pending.count > 0 && (
-                    <Button
-                      size="sm"
-                      variant="success"
-                      className="w-full"
-                      onClick={() => setPayingUserId(dUser.id)}
-                    >
-                      <Banknote size={14} />
-                      Pagar {formatRD(pending.amount)}
-                    </Button>
+                  {/* Cash breakdown */}
+                  {data.cashOrders.length > 0 && (
+                    <div className="text-[10px] text-bs-text-muted mb-1">
+                      Efectivo cobrado: <strong className="text-bs-text">{formatRD(data.cashCollected)}</strong>
+                      {' — '}Comisión: <strong className="text-bs-green">{formatRD(data.cashOrders.reduce((s, o) => s + (o.delivery_fee || 0), 0))}</strong>
+                      {' — '}Entrega: <strong className="text-bs-orange">{formatRD(data.oweToStore)}</strong>
+                    </div>
                   )}
-
-                  {pending.count === 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-bs-green">
-                      <CheckCircle size={12} />
-                      <span>Comisiones al día</span>
+                  {data.transferOrders.length > 0 && (
+                    <div className="text-[10px] text-bs-text-muted mb-2">
+                      Transfer/Prepago: <strong className="text-bs-accent">{data.transferOrders.length} orden(es)</strong>
+                      {' — '}Comisión pendiente: <strong className="text-bs-cyan">{formatRD(data.storeOwes)}</strong>
                     </div>
                   )}
 
-                  {/* Toggle History */}
-                  {userPayments.length > 0 && (
+                  {/* Cuadre Button */}
+                  {data.allOrderIds.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant={data.net > 0 ? 'warning' : 'success'}
+                      className="w-full"
+                      onClick={() => setCuadreUserId(dUser.id)}
+                    >
+                      <Banknote size={14} />
+                      Realizar Cuadre ({data.allOrderIds.length} entregas)
+                    </Button>
+                  )}
+
+                  {data.allOrderIds.length === 0 && (
+                    <div className="flex items-center gap-1.5 text-xs text-bs-green">
+                      <CheckCircle size={12} />
+                      <span>Todo cuadrado</span>
+                    </div>
+                  )}
+
+                  {/* Expandable order detail */}
+                  {data.allOrderIds.length > 0 && (
                     <button
                       onClick={() => setExpandedUser(isExpanded ? null : dUser.id)}
                       className="flex items-center gap-1 text-[10px] text-bs-text-muted hover:text-bs-text-secondary mt-2 transition-colors"
                     >
-                      <History size={10} />
-                      <span>{userPayments.length} pagos realizados</span>
+                      <Package size={10} />
+                      <span>Ver {data.allOrderIds.length} órdenes pendientes</span>
                       {isExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                     </button>
                   )}
 
-                  {/* Payment History for this user */}
-                  {isExpanded && userPayments.length > 0 && (
-                    <div className="mt-2 space-y-1.5">
-                      {userPayments.map((p) => (
-                        <div key={p.id} className="flex items-center justify-between bg-bs-surface px-2 py-1.5 rounded-lg">
-                          <div>
-                            <div className="text-[10px] text-bs-text-secondary">
-                              {new Date(p.paid_at).toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </div>
-                            <div className="text-[9px] text-bs-text-muted">
-                              {p.orders_paid.length} entregas · por {p.paid_by}
-                            </div>
+                  {isExpanded && (
+                    <div className="mt-2 space-y-2">
+                      {Object.entries(dayGroups).map(([day, dayOrders]) => {
+                        const dayKey = `${dUser.id}_${day}`;
+                        const dayExpanded = expandedDays[dayKey] ?? true;
+                        const dayTotal = dayOrders.reduce((s, o) => s + o.total, 0);
+                        const dayFees = dayOrders.reduce((s, o) => s + (o.delivery_fee || 0), 0);
+                        return (
+                          <div key={day}>
+                            <button
+                              onClick={() => toggleDay(dayKey)}
+                              className="w-full flex items-center justify-between px-2 py-1.5 bg-bs-surface rounded-lg"
+                            >
+                              <span className="text-[10px] font-semibold text-bs-text-secondary">{day} — {dayOrders.length} orden(es)</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-bs-text">{formatRD(dayTotal)}</span>
+                                {dayExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                              </div>
+                            </button>
+                            {dayExpanded && (
+                              <div className="mt-1 space-y-1 pl-2">
+                                {dayOrders.map((o) => (
+                                  <div key={o.id} className="flex items-center justify-between px-2 py-1.5 border-l-2 border-bs-border">
+                                    <div>
+                                      <div className="text-[11px] font-medium">#{o.order_number} — {o.customer?.name}</div>
+                                      <div className="text-[9px] text-bs-text-muted">
+                                        {o.payment_method === 'cash' ? '💵 Efectivo' : o.payment_method === 'transfer' ? '📱 Transfer' : '✅ Prepago'}
+                                        {' · '}Total: {formatRD(o.total)} · Comisión: {formatRD(o.delivery_fee || 0)}
+                                      </div>
+                                    </div>
+                                    {o.payment_method === 'cash' && (
+                                      <span className="text-[9px] font-bold text-bs-orange">{formatRD(o.total - (o.delivery_fee || 0))}</span>
+                                    )}
+                                  </div>
+                                ))}
+                                <div className="flex justify-between px-2 py-1 text-[10px] border-t border-bs-border">
+                                  <span className="text-bs-text-muted">Subtotal día:</span>
+                                  <span className="font-bold">Total: {formatRD(dayTotal)} · Comisión: {formatRD(dayFees)}</span>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <Badge variant="success">{formatRD(p.amount)}</Badge>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
-                </div>
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <Star size={12} className="text-yellow-400 fill-yellow-400" />
-                  <span className="text-xs font-semibold">4.8</span>
+
+                  {/* Payment history toggle */}
+                  {commissionPayments.filter((p) => p.delivery_user_id === dUser.id).length > 0 && (
+                    <button
+                      onClick={() => setShowHistory(true)}
+                      className="flex items-center gap-1 text-[10px] text-bs-text-muted hover:text-bs-text-secondary mt-1 transition-colors"
+                    >
+                      <History size={10} />
+                      <span>Historial de cuadres</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </Card>
@@ -200,50 +320,120 @@ export default function DeliveriesPage() {
         })}
       </div>
 
-      {/* Global History Button */}
+      {/* Global History */}
       {commissionPayments.length > 0 && (
         <Button variant="ghost" className="w-full" onClick={() => setShowHistory(true)}>
           <History size={14} />
-          Historial completo de pagos ({commissionPayments.length})
+          Historial completo ({commissionPayments.length} cuadres)
         </Button>
       )}
 
-      {/* Pay Confirmation Modal */}
+      {/* Cuadre Confirmation Modal */}
       <Modal
-        open={!!payingUserId}
-        onClose={() => setPayingUserId(null)}
-        title="Confirmar Pago de Comisión"
+        open={!!cuadreUserId}
+        onClose={() => setCuadreUserId(null)}
+        title="Realizar Cuadre"
       >
-        {payingUserId && (() => {
-          const dUser = deliveryUsers.find((u) => u.id === payingUserId);
-          const pending = pendingCommissions[payingUserId];
+        {cuadreUserId && (() => {
+          const dUser = deliveryUsers.find((u) => u.id === cuadreUserId);
+          const data = cuadreData[cuadreUserId];
           return (
             <div className="space-y-4">
-              <div className="bg-bs-surface rounded-xl p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-bs-text-secondary">Delivery:</span>
-                  <span className="font-bold">{dUser?.name}</span>
+              <div className="text-center mb-2">
+                <div className="w-12 h-12 mx-auto bg-bs-green/15 rounded-full flex items-center justify-center mb-2">
+                  <Truck size={24} className="text-bs-green" />
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-bs-text-secondary">Entregas:</span>
-                  <span className="font-bold">{pending.count}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-bs-text-secondary">Comisión por entrega:</span>
-                  <span>{formatRD(COMMISSION_PER_DELIVERY)}</span>
-                </div>
-                <div className="border-t border-bs-border pt-2 flex justify-between">
-                  <span className="text-sm font-bold">Total a pagar:</span>
-                  <span className="text-lg font-bold text-bs-green">{formatRD(pending.amount)}</span>
-                </div>
+                <h3 className="text-sm font-bold">{dUser?.name}</h3>
+                <p className="text-[11px] text-bs-text-muted">{data.allOrderIds.length} entregas pendientes de cuadre</p>
               </div>
+
+              <div className="bg-bs-surface rounded-xl p-3 space-y-2">
+                {data.cashOrders.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 text-xs text-bs-text-secondary mb-1">
+                      <ArrowDownRight size={12} className="text-bs-orange" />
+                      <span className="font-semibold">Efectivo ({data.cashOrders.length} órdenes)</span>
+                    </div>
+                    <div className="flex justify-between text-xs pl-5">
+                      <span className="text-bs-text-muted">Cobrado de clientes</span>
+                      <span className="font-bold">{formatRD(data.cashCollected)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs pl-5">
+                      <span className="text-bs-text-muted">Su comisión (se queda)</span>
+                      <span className="font-bold text-bs-green">- {formatRD(data.cashOrders.reduce((s, o) => s + (o.delivery_fee || 0), 0))}</span>
+                    </div>
+                    <div className="flex justify-between text-xs pl-5 pt-1 border-t border-bs-border">
+                      <span className="font-semibold text-bs-orange">Debe entregar a tienda</span>
+                      <span className="font-bold text-bs-orange">{formatRD(data.oweToStore)}</span>
+                    </div>
+                  </>
+                )}
+
+                {data.transferOrders.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 text-xs text-bs-text-secondary mt-3 mb-1">
+                      <ArrowUpRight size={12} className="text-bs-cyan" />
+                      <span className="font-semibold">Transfer/Prepago ({data.transferOrders.length} órdenes)</span>
+                    </div>
+                    <div className="flex justify-between text-xs pl-5">
+                      <span className="text-bs-text-muted">Comisión pendiente</span>
+                      <span className="font-bold text-bs-cyan">{formatRD(data.storeOwes)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs pl-5">
+                      <span className="text-bs-text-muted">Tienda debe pagar</span>
+                      <span className="font-bold text-bs-cyan">{formatRD(data.storeOwes)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* NET RESULT */}
+              <div className={`p-4 rounded-xl border-2 text-center ${
+                data.net > 0 ? 'bg-orange-500/10 border-orange-500/30' :
+                data.net < 0 ? 'bg-cyan-500/10 border-cyan-500/30' :
+                'bg-green-500/10 border-green-500/30'
+              }`}>
+                <div className="text-xs text-bs-text-secondary mb-1">
+                  {data.net > 0 ? 'Delivery entrega a tienda' : data.net < 0 ? 'Tienda paga a delivery' : 'Cuadre neto'}
+                </div>
+                <div className={`text-2xl font-bold ${
+                  data.net > 0 ? 'text-bs-orange' : data.net < 0 ? 'text-bs-cyan' : 'text-bs-green'
+                }`}>
+                  {formatRD(Math.abs(data.net))}
+                </div>
+                {data.net === 0 && (
+                  <div className="text-xs text-bs-green mt-1">La comisión cubre exactamente el efectivo</div>
+                )}
+              </div>
+
+              {/* Order list in modal */}
+              <details className="text-xs">
+                <summary className="cursor-pointer text-bs-text-muted hover:text-bs-text-secondary py-1">
+                  Ver detalle de {data.allOrderIds.length} órdenes
+                </summary>
+                <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                  {[...data.cashOrders, ...data.transferOrders].map((o) => (
+                    <div key={o.id} className="flex justify-between px-2 py-1.5 bg-bs-surface rounded-lg">
+                      <div>
+                        <span className="font-medium">#{o.order_number}</span>
+                        <span className="text-bs-text-muted ml-1">— {o.customer?.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span>{o.payment_method === 'cash' ? '💵' : '📱'}</span>
+                        <span className="font-bold">{formatRD(o.total)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="ghost" onClick={() => setPayingUserId(null)}>
+                <Button variant="ghost" onClick={() => setCuadreUserId(null)}>
                   Cancelar
                 </Button>
-                <Button variant="success" onClick={() => handlePayCommission(payingUserId)}>
+                <Button variant="success" onClick={() => handleCuadre(cuadreUserId)}>
                   <CheckCircle size={14} />
-                  Confirmar Pago
+                  Confirmar Cuadre
                 </Button>
               </div>
             </div>
@@ -251,17 +441,24 @@ export default function DeliveriesPage() {
         })()}
       </Modal>
 
-      {/* Full History Modal */}
-      <Modal open={showHistory} onClose={() => setShowHistory(false)} title="Historial de Pagos">
+      {/* History Modal */}
+      <Modal open={showHistory} onClose={() => setShowHistory(false)} title="Historial de Cuadres">
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {commissionPayments.length === 0 ? (
-            <p className="text-sm text-bs-text-muted text-center py-4">Sin pagos registrados</p>
+            <p className="text-sm text-bs-text-muted text-center py-4">Sin cuadres registrados</p>
           ) : (
             commissionPayments.map((p) => (
               <div key={p.id} className="bg-bs-surface rounded-xl p-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-bold">{p.delivery_user_name}</span>
-                  <Badge variant="success">{formatRD(p.amount)}</Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="success">{formatRD(p.amount)}</Badge>
+                    {p.confirmed_by_delivery ? (
+                      <Badge variant="success">Confirmado</Badge>
+                    ) : (
+                      <Badge variant="warning">Pendiente</Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-bs-text-muted">
                   <span>
@@ -277,16 +474,71 @@ export default function DeliveriesPage() {
         </div>
       </Modal>
 
+      {/* Help Modal */}
+      <Modal open={showHelp} onClose={() => setShowHelp(false)} title="¿Cómo funciona el cuadre?">
+        <div className="space-y-4 text-xs text-bs-text-secondary">
+          <div className="p-3 bg-bs-surface rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-full bg-orange-500/15 flex items-center justify-center">
+                <span className="text-sm">💵</span>
+              </div>
+              <span className="font-bold text-bs-text">Órdenes en efectivo</span>
+            </div>
+            <p>El delivery cobra el <strong>total</strong> al cliente. Se queda con su <strong>comisión</strong> (costo de envío) y entrega la <strong>diferencia</strong> a la tienda.</p>
+            <div className="mt-2 bg-bs-bg p-2 rounded-lg text-[11px]">
+              <div>Ejemplo: Total RD$2,500 · Envío RD$200</div>
+              <div className="text-bs-green">Delivery se queda: RD$200</div>
+              <div className="text-bs-orange">Entrega a tienda: RD$2,300</div>
+            </div>
+          </div>
+
+          <div className="p-3 bg-bs-surface rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-full bg-cyan-500/15 flex items-center justify-center">
+                <span className="text-sm">📱</span>
+              </div>
+              <span className="font-bold text-bs-text">Transferencias / Prepago</span>
+            </div>
+            <p>El dinero ya llegó a la cuenta de la tienda. La tienda le <strong>debe la comisión</strong> al delivery.</p>
+            <div className="mt-2 bg-bs-bg p-2 rounded-lg text-[11px]">
+              <div>Ejemplo: Total RD$2,500 · Envío RD$200</div>
+              <div className="text-bs-cyan">Tienda paga al delivery: RD$200</div>
+            </div>
+          </div>
+
+          <div className="p-3 bg-bs-surface rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-full bg-green-500/15 flex items-center justify-center">
+                <Minus size={14} className="text-bs-green" />
+              </div>
+              <span className="font-bold text-bs-text">Cuadre neto</span>
+            </div>
+            <p>Se restan ambos montos. Si el delivery tiene efectivo Y transferencias:</p>
+            <div className="mt-2 bg-bs-bg p-2 rounded-lg text-[11px]">
+              <div>Efectivo: debe entregar RD$2,300</div>
+              <div>Transfer: tienda le debe RD$400</div>
+              <div className="font-bold text-bs-orange mt-1">Neto: delivery entrega RD$1,900</div>
+            </div>
+          </div>
+
+          <div className="p-3 bg-green-500/10 rounded-xl border border-green-500/20">
+            <span className="font-bold text-bs-green">Al confirmar el cuadre:</span>
+            <ul className="mt-1 space-y-1 list-disc list-inside">
+              <li>Se marcan todas las órdenes como liquidadas</li>
+              <li>El delivery recibe notificación con el resumen</li>
+              <li>El delivery debe confirmar que recibió/entregó el monto</li>
+              <li>Queda registrado en el historial</li>
+            </ul>
+          </div>
+        </div>
+      </Modal>
+
       {/* Add Modal */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Agregar Delivery">
         <div className="space-y-3">
           <input placeholder="Nombre completo" className="w-full" />
           <input placeholder="Teléfono" type="tel" className="w-full" />
           <input placeholder="PIN de acceso" type="password" className="w-full" />
-          <div>
-            <label className="text-xs text-bs-text-secondary mb-1 block">Comisión por entrega</label>
-            <input placeholder="RD$ 150" type="number" className="w-full" />
-          </div>
           <Button variant="success" size="lg" className="w-full" onClick={() => setShowAdd(false)}>
             <UserPlus size={16} />
             Registrar Delivery

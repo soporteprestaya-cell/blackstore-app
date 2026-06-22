@@ -4,22 +4,17 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { DEMO_USERS } from '@/lib/demo-data';
 import { Button } from '@/components/ui/button';
-import { Shield, Truck, Store, LogIn, Eye, EyeOff } from 'lucide-react';
-import type { UserRole } from '@/lib/types';
-
-const roleConfig: Record<UserRole, { icon: typeof Shield; label: string; color: string }> = {
-  admin: { icon: Shield, label: 'Administrador', color: 'text-bs-red' },
-  employee: { icon: Store, label: 'Empleado', color: 'text-bs-accent' },
-  delivery: { icon: Truck, label: 'Delivery', color: 'text-bs-green' },
-};
+import { LogIn, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
-  const { user, setUser, _hydrated } = useAppStore();
+  const { user, setUser, teamMembers, _hydrated } = useAppStore();
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const allUsers = [...DEMO_USERS, ...teamMembers.filter((m) => !DEMO_USERS.some((d) => d.id === m.id))];
 
   useEffect(() => {
     if (!_hydrated) return;
@@ -34,27 +29,32 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 500));
 
-    const found = DEMO_USERS.find(
-      (u) => u.phone.replace(/-/g, '').includes(phone.replace(/-/g, '')) && u.is_active
+    const cleanPhone = phone.replace(/[-\s]/g, '');
+    const found = allUsers.find(
+      (u) => u.phone.replace(/[-\s]/g, '') === cleanPhone && u.is_active
     );
 
-    if (found) {
-      setUser(found);
-    } else {
-      setError('Teléfono o PIN incorrecto');
+    if (!found) {
+      setError('Teléfono no registrado');
+      setLoading(false);
+      return;
     }
-    setLoading(false);
-  }
 
-  function handleQuickLogin(role: UserRole) {
-    const u = DEMO_USERS.find((u) => u.role === role && u.is_active);
-    if (u) {
-      setUser(u);
-      const dest = u.role === 'delivery' ? '/my-orders' : '/orders';
-      window.location.href = dest;
+    if (found.pin && found.pin !== pin) {
+      setError('PIN incorrecto');
+      setLoading(false);
+      return;
     }
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    setUser(found);
+    const dest = found.role === 'delivery' ? '/my-orders' : '/orders';
+    window.location.href = dest;
+    setLoading(false);
   }
 
   if (user) return null;
@@ -62,14 +62,12 @@ export default function LoginPage() {
   return (
     <div className="h-full flex flex-col items-center justify-center px-6 bg-bs-bg">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="text-center mb-10">
           <img src="/logo.jpeg" alt="BlackStore RD" className="w-20 h-20 mx-auto mb-4 rounded-2xl object-cover" />
           <h1 className="text-2xl font-bold tracking-tight">BlackStore RD</h1>
           <p className="text-sm text-bs-text-secondary mt-1">Sistema de Gestión y Delivery</p>
         </div>
 
-        {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-bs-text-secondary mb-1.5 uppercase tracking-wider">
@@ -79,7 +77,7 @@ export default function LoginPage() {
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="809-555-0001"
+              placeholder="809-000-0000"
               className="w-full"
               required
             />
@@ -97,6 +95,7 @@ export default function LoginPage() {
                 placeholder="••••"
                 maxLength={6}
                 className="w-full pr-10"
+                required
               />
               <button
                 type="button"
@@ -118,31 +117,8 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        {/* Demo Quick Login */}
-        <div className="mt-8 pt-6 border-t border-bs-border">
-          <p className="text-center text-xs text-bs-text-muted mb-4 uppercase tracking-wider">
-            Acceso rápido (demo)
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {(['admin', 'employee', 'delivery'] as UserRole[]).map((role) => {
-              const cfg = roleConfig[role];
-              const Icon = cfg.icon;
-              return (
-                <button
-                  key={role}
-                  onClick={() => handleQuickLogin(role)}
-                  className="flex flex-col items-center gap-2 p-3 bg-bs-card border border-bs-border rounded-xl hover:border-bs-border-light transition-all active:scale-95"
-                >
-                  <Icon size={20} className={cfg.color} />
-                  <span className="text-[10px] text-bs-text-secondary font-medium">{cfg.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         <p className="text-center text-[9px] text-bs-text-muted/40 mt-10 tracking-wide">
-          Desarrollado por Julio Leyba — Jesús es Mi Guía
+          Desarrollador<br/>Julio Leyba<br/>Jesús es Mi Guía
         </p>
       </div>
     </div>

@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from 'react';
 import { useAppStore } from '@/lib/store';
-import { DEMO_ORDERS, DEMO_STATS } from '@/lib/demo-data';
 import { OrderCard } from '@/components/order-card';
 import { StatCard } from '@/components/ui/stat-card';
 import { Button } from '@/components/ui/button';
@@ -25,10 +24,21 @@ const FILTER_TABS: { label: string; statuses: OrderStatus[] }[] = [
 ];
 
 export default function OrdersPage() {
+  const { orders } = useAppStore();
   const [activeFilter, setActiveFilter] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const stats = DEMO_STATS;
-  const orders = DEMO_ORDERS;
+
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const todayOrders = orders.filter((o) => o.created_at.slice(0, 10) === today);
+    return {
+      orders_pending: orders.filter((o) => ['new', 'preparing', 'ready'].includes(o.status)).length,
+      orders_in_transit: orders.filter((o) => ['assigned', 'picked_up', 'in_transit'].includes(o.status)).length,
+      orders_delivered: orders.filter((o) => o.status === 'delivered' || o.status === 'completed').length,
+      revenue_today: todayOrders.reduce((sum, o) => sum + (o.total || 0), 0),
+      payments_pending: orders.filter((o) => o.payment_status === 'pending' && o.status !== 'cancelled').length,
+    };
+  }, [orders]);
 
   const filteredOrders = useMemo(() => {
     let result = orders;
@@ -57,10 +67,9 @@ export default function OrdersPage() {
         <StatCard label="Entregadas" value={stats.orders_delivered} icon={CheckCircle} color="green" />
         <StatCard
           label="Ventas hoy"
-          value={`RD$ ${(stats.revenue_today / 1000).toFixed(1)}K`}
+          value={stats.revenue_today >= 1000 ? `RD$ ${(stats.revenue_today / 1000).toFixed(1)}K` : `RD$ ${stats.revenue_today}`}
           icon={DollarSign}
           color="cyan"
-          trend={{ value: 12, positive: true }}
         />
       </div>
 

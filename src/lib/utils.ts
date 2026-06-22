@@ -29,10 +29,12 @@ export function timeAgo(date: string) {
 
 export function generateOrderNumber() {
   const d = new Date();
+  const day = d.getDate().toString().padStart(2, '0');
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
   const seq = Math.floor(Math.random() * 9999)
     .toString()
     .padStart(4, '0');
-  return `BS-${d.getFullYear().toString().slice(2)}${(d.getMonth() + 1).toString().padStart(2, '0')}${seq}`;
+  return `BS-${day}${month}-${seq}`;
 }
 
 export const ORDER_STATUS_CONFIG: Record<

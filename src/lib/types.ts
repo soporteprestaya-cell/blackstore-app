@@ -15,15 +15,35 @@ export type OrderType = 'standard' | 'try_fit';
 
 export type PaymentMethod = 'transfer' | 'cash' | 'prepaid';
 
+export type DeliveryMethod = 'personal' | 'bus_route';
+
+export interface BusRouteInfo {
+  company: string;
+  route: string;
+  terminal: string;
+  notes?: string;
+}
+
 export type PaymentStatus = 'pending' | 'delivery_confirmed' | 'store_confirmed' | 'verified';
 
 export interface User {
   id: string;
   name: string;
   phone: string;
+  pin: string;
   role: UserRole;
   avatar_url?: string;
   is_active: boolean;
+  created_at: string;
+}
+
+export interface Notification {
+  id: string;
+  user_id?: string;
+  type: 'delivery_completed' | 'payment_confirmed' | 'order_assigned';
+  message: string;
+  order_id?: string;
+  read: boolean;
   created_at: string;
 }
 
@@ -33,6 +53,7 @@ export interface Customer {
   phone: string;
   address: string;
   sector: string;
+  location_url?: string;
   notes?: string;
   is_blacklisted: boolean;
   blacklist_reason?: string;
@@ -60,7 +81,7 @@ export interface OrderItem {
   quantity: number;
   unit_price: number;
   is_try_fit: boolean;
-  kept: boolean | null;
+  kept: boolean | 'received' | null;
 }
 
 export interface Order {
@@ -79,8 +100,12 @@ export interface Order {
   notes?: string;
   source: 'whatsapp' | 'instagram' | 'store' | 'other';
   priority: 'normal' | 'urgent';
+  delivery_method: DeliveryMethod;
+  bus_route?: BusRouteInfo;
+  location_url?: string;
   product_photos: string[];
   package_photo?: string;
+  payment_photo?: string;
   created_by: string;
   assigned_delivery_id?: string;
   assigned_delivery?: User;
@@ -117,6 +142,8 @@ export interface CommissionPayment {
   orders_paid: string[];
   paid_at: string;
   paid_by: string;
+  confirmed_by_delivery: boolean;
+  confirmed_at?: string;
 }
 
 export interface AuditEntry {

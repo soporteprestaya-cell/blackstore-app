@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import type { Order } from '@/lib/types';
 import { formatRD, timeAgo, ORDER_STATUS_CONFIG, PAYMENT_STATUS_CONFIG } from '@/lib/utils';
-import { Clock, MapPin, User, Truck, AlertTriangle, Repeat } from 'lucide-react';
+import { Clock, MapPin, User, Truck, AlertTriangle, Repeat, Bus } from 'lucide-react';
 
 interface OrderCardProps {
   order: Order;
@@ -41,14 +41,20 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
     >
       {/* Top row: order number + status */}
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-bs-text">#{order.order_number}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-bold text-bs-text shrink-0">#{order.order_number}</span>
+          <span className="text-xs font-semibold text-bs-accent truncate">{order.customer?.name}</span>
           {order.priority === 'urgent' && (
             <span className="text-[9px] font-bold text-bs-red bg-red-500/15 px-1.5 py-0.5 rounded">URGENTE</span>
           )}
           {order.type === 'try_fit' && (
             <span className="flex items-center gap-0.5 text-[9px] font-bold text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded">
               <Repeat size={9} />PRUEBA
+            </span>
+          )}
+          {order.delivery_method === 'bus_route' && (
+            <span className="flex items-center gap-0.5 text-[9px] font-bold text-cyan-400 bg-cyan-500/15 px-1.5 py-0.5 rounded">
+              <Bus size={9} />GUAGUA
             </span>
           )}
         </div>

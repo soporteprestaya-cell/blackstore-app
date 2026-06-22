@@ -3,26 +3,25 @@
 import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { DEMO_ORDERS } from '@/lib/demo-data';
+import { useAppStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { PhotoCapture } from '@/components/ui/photo-capture';
 import { ORDER_STATUS_CONFIG, formatRD, formatDate, cn } from '@/lib/utils';
-import type { OrderItem } from '@/lib/types';
 import {
-  ArrowLeft, MapPin, Phone, Package, Truck, Camera,
+  ArrowLeft, MapPin, Phone, Package, Truck,
   CheckCircle, Navigation, DollarSign, Repeat, AlertTriangle,
   MessageSquare, Star, ClipboardCheck, MapPinned, Clock,
-  PhoneCall, Check, X,
+  PhoneCall, Check, X, Bus,
 } from 'lucide-react';
 
 export default function DeliveryOrderDetailPage() {
   const { id } = useParams();
-  const order = DEMO_ORDERS.find((o) => o.id === id);
+  const { orders, updateOrder, addNotification, user } = useAppStore();
+  const order = orders.find((o) => o.id === id);
 
   const [status, setStatus] = useState(order?.status || 'assigned');
-  const [deliveryPhoto, setDeliveryPhoto] = useState<string | undefined>();
   const [pickupPhoto, setPickupPhoto] = useState<string | undefined>();
   const [paymentPhoto, setPaymentPhoto] = useState<string | undefined>();
   const [paymentMethod, setPaymentMethod] = useState<'transfer' | 'cash' | 'prepaid'>(order?.payment_method || 'cash');
@@ -30,10 +29,13 @@ export default function DeliveryOrderDetailPage() {
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [returnPhoto, setReturnPhoto] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
+  const [driverName, setDriverName] = useState('');
+  const [driverPhone, setDriverPhone] = useState('');
+  const [busPlate, setBusPlate] = useState('');
+  const [busFicha, setBusFicha] = useState('');
 
   const [reminderChecklist, setReminderChecklist] = useState({
     confirmed_address: false,
-    got_location: false,
     checked_hours: false,
     estimated_arrival: false,
   });
@@ -48,17 +50,6 @@ export default function DeliveryOrderDetailPage() {
   });
 
   const allRemindersDone = Object.values(reminderChecklist).every(Boolean);
-
-  const tryFitTotal = useMemo(() => {
-    if (!order || order.type !== 'try_fit') return order?.total || 0;
-    const keptSubtotal = order.items.reduce((sum, item) => {
-      if (itemSelections[item.id] === 'kept') {
-        return sum + item.quantity * item.unit_price;
-      }
-      return sum;
-    }, 0);
-    return keptSubtotal + (order.delivery_fee || 0);
-  }, [order, itemSelections]);
 
   const allItemsDecided = useMemo(() => {
     if (!order || order.type !== 'try_fit') return true;
@@ -86,9 +77,12 @@ export default function DeliveryOrderDetailPage() {
 
   const isTryFit = order.type === 'try_fit';
 
-  const effectiveTotal = isTryFit && allItemsDecided && status === 'in_transit' ? tryFitTotal : order.total;
+  const effectiveTotal = order.total;
 
-  const canConfirmDelivery = deliveryPhoto && (
+  const isBusRoute = order?.delivery_method === 'bus_route';
+  const busDriverReady = !isBusRoute || (driverName && driverPhone && busPlate);
+
+  const canConfirmDelivery = busDriverReady && (
     paymentMethod === 'prepaid' ||
     (paymentMethod === 'transfer' && paymentPhoto) ||
     (paymentMethod === 'cash' && cashAmount)
@@ -98,14 +92,77 @@ export default function DeliveryOrderDetailPage() {
     setLoading(true);
     await new Promise((r) => setTimeout(r, 800));
     setStatus(newStatus as typeof status);
+
+    const baseUpdate: Record<string, any> = {
+      status: newStatus,
+      payment_method: paymentMethod,
+      updated_at: new Date().toISOString(),
+    };
+    if (paymentMethod === 'transfer' && paymentPhoto) {
+      baseUpdate.payment_photo = paymentPhoto;
+    }
+
+    if (newStatus === 'delivered' && order!.type === 'try_fit') {
+      const updatedItems = order!.items.map((item) => ({
+        ...item,
+        kept: item.is_try_fit
+          ? (itemSelections[item.id] === 'kept' ? true : itemSelections[item.id] === 'returned' ? false : item.kept)
+          : item.kept,
+      }));
+      updateOrder(order!.id, { ...baseUpdate, items: updatedItems });
+    } else {
+      updateOrder(order!.id, baseUpdate);
+    }
+
+    if (newStatus === 'delivered') {
+      const now = new Date().toISOString();
+      const isTransfer = paymentMethod === 'transfer';
+
+      addNotification({
+        id: `n_${Date.now()}`,
+        user_id: '1',
+        type: isTransfer ? 'payment_confirmed' : 'delivery_completed',
+        message: isTransfer
+          ? `🔴 URGENTE: Verificar transferencia de ${formatRD(order!.total)} — Orden #${order!.order_number} (${order!.customer?.name || ''}). Delivery: ${user?.name || ''}`
+          : `${user?.name || 'Delivery'} entregó la orden #${order!.order_number} al cliente ${order!.customer?.name || ''}`,
+        order_id: order!.id,
+        read: false,
+        created_at: now,
+      });
+
+      if (order!.type === 'try_fit') {
+        const returned = order!.items.filter((i) => itemSelections[i.id] === 'returned');
+        addNotification({
+          id: `n_tryfit_${Date.now()}`,
+          user_id: '2',
+          type: 'delivery_completed',
+          message: `Orden #${order!.order_number} — ${returned.length} pieza(s) por recibir del delivery ${user?.name || ''}. Confirma recepción en tienda.`,
+          order_id: order!.id,
+          read: false,
+          created_at: now,
+        });
+      }
+    }
     setLoading(false);
   }
 
   function toggleItemSelection(itemId: string, value: 'kept' | 'returned') {
-    setItemSelections((prev) => ({
-      ...prev,
-      [itemId]: prev[itemId] === value ? null : value,
-    }));
+    if (!order) return;
+    const clickedItem = order.items.find((i) => i.id === itemId);
+    if (!clickedItem) return;
+
+    setItemSelections((prev) => {
+      const next = { ...prev };
+      if (value === 'kept') {
+        next[itemId] = 'kept';
+        order.items
+          .filter((i) => i.id !== itemId && i.is_try_fit && i.product_name === clickedItem.product_name)
+          .forEach((i) => { next[i.id] = 'returned'; });
+      } else {
+        next[itemId] = 'returned';
+      }
+      return next;
+    });
   }
 
   function toggleReminder(key: keyof typeof reminderChecklist) {
@@ -166,14 +223,41 @@ export default function DeliveryOrderDetailPage() {
               WhatsApp
             </Button>
           </a>
-          <a href={`https://maps.google.com/?q=${encodeURIComponent(order.customer?.address || '')}`} target="_blank">
+          <a href={order.location_url || `https://maps.google.com/?q=${encodeURIComponent(order.customer?.address || '')}`} target="_blank">
             <Button variant="primary" size="sm" className="w-full">
               <Navigation size={13} />
-              Navegar
+              {order.location_url ? 'Abrir Mapa' : 'Navegar'}
             </Button>
           </a>
         </div>
       </Card>
+
+      {/* Bus Route Info */}
+      {order.delivery_method === 'bus_route' && order.bus_route && (
+        <Card highlight="cyan">
+          <div className="flex items-center gap-2 mb-2">
+            <Bus size={16} className="text-bs-cyan" />
+            <span className="text-xs font-bold text-bs-cyan uppercase tracking-wider">
+              Envío por guagua
+            </span>
+          </div>
+          <div className="space-y-1.5 text-sm">
+            <div className="flex justify-between">
+              <span className="text-bs-text-muted">Línea:</span>
+              <span className="font-bold">{order.bus_route.company}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-bs-text-muted">Destino:</span>
+              <span className="font-bold">{order.bus_route.terminal}</span>
+            </div>
+            {order.bus_route.notes && (
+              <div className="mt-2 text-xs text-bs-text-secondary italic bg-bs-surface p-2 rounded-lg">
+                {order.bus_route.notes}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Items */}
       <Card>
@@ -220,7 +304,6 @@ export default function DeliveryOrderDetailPage() {
           <div className="space-y-2.5">
             {([
               { key: 'confirmed_address' as const, icon: MapPin, label: 'Confirmar dirección exacta con el cliente' },
-              { key: 'got_location' as const, icon: MapPinned, label: 'Pedir ubicación en vivo / punto de referencia' },
               { key: 'checked_hours' as const, icon: Clock, label: 'Preguntar hasta qué hora puede recibir' },
               { key: 'estimated_arrival' as const, icon: PhoneCall, label: 'Comunicar tiempo estimado de llegada' },
             ]).map((item) => (
@@ -270,24 +353,18 @@ export default function DeliveryOrderDetailPage() {
           <span className="text-xs font-semibold text-bs-accent uppercase tracking-wider mb-3 block">
             Paso 1: Recoger en tienda
           </span>
-          <PhotoCapture
-            label="Foto al recoger paquete"
-            required
-            value={pickupPhoto}
-            onChange={setPickupPhoto}
-          />
           <Button
             variant="primary"
             size="lg"
-            className="w-full mt-3"
-            disabled={!pickupPhoto || !allRemindersDone}
+            className="w-full"
+            disabled={!allRemindersDone}
             loading={loading}
             onClick={() => handleAction('in_transit')}
           >
             <Truck size={16} />
             Confirmar Recogida — En Camino
           </Button>
-          {!allRemindersDone && pickupPhoto && (
+          {!allRemindersDone && (
             <p className="text-center text-[11px] text-bs-orange mt-2">
               Completa el checklist de contacto con el cliente
             </p>
@@ -370,50 +447,22 @@ export default function DeliveryOrderDetailPage() {
             ))}
           </div>
 
-          {/* Adjusted Total */}
-          {allItemsDecided && (
-            <div className="mt-4 p-3 bg-bs-card rounded-xl border border-bs-border">
-              {keptItems.length > 0 && (
-                <div className="space-y-1 mb-2">
-                  <span className="text-[10px] text-bs-green font-semibold uppercase">Se queda con:</span>
-                  {keptItems.map((item) => (
-                    <div key={item.id} className="flex justify-between text-xs text-bs-text-secondary">
-                      <span>{item.product_name} {item.size && `(${item.size})`}</span>
-                      <span>{formatRD(item.quantity * item.unit_price)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {returnedItems.length > 0 && (
-                <div className="space-y-1 mb-2">
-                  <span className="text-[10px] text-bs-red font-semibold uppercase">Devuelve:</span>
-                  {returnedItems.map((item) => (
-                    <div key={item.id} className="flex justify-between text-xs text-bs-text-muted line-through">
-                      <span>{item.product_name} {item.size && `(${item.size})`}</span>
-                      <span>{formatRD(item.quantity * item.unit_price)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="pt-2 border-t border-bs-border flex justify-between items-center">
-                <span className="text-xs text-bs-text-secondary">Delivery</span>
-                <span className="text-xs">{formatRD(order.delivery_fee)}</span>
+          {allItemsDecided && returnedItems.length > 0 && (
+            <div className="mt-4 p-3 bg-bs-card rounded-xl border border-bs-border space-y-1">
+              <div className="flex items-center gap-2 text-xs text-bs-green">
+                <CheckCircle size={12} />
+                <span>Cliente se queda: {keptItems.map((i) => `${i.product_name} (${i.size})`).join(', ')}</span>
               </div>
-              <div className="flex justify-between items-center mt-1">
-                <span className="text-sm font-bold">Total ajustado</span>
-                <span className="text-lg font-bold text-bs-green">{formatRD(tryFitTotal)}</span>
+              <div className="flex items-center gap-2 text-xs text-bs-text-muted">
+                <Repeat size={12} />
+                <span>Devolver: {returnedItems.map((i) => `${i.product_name} (${i.size})`).join(', ')}</span>
               </div>
-              {tryFitTotal !== order.total && (
-                <div className="text-[10px] text-bs-text-muted text-right mt-0.5">
-                  Original: <span className="line-through">{formatRD(order.total)}</span>
-                </div>
-              )}
             </div>
           )}
 
           {!allItemsDecided && (
             <p className="text-center text-[11px] text-purple-400 mt-3">
-              Marca todas las piezas para continuar con la entrega
+              Selecciona la talla que eligió el cliente
             </p>
           )}
 
@@ -437,27 +486,28 @@ export default function DeliveryOrderDetailPage() {
             Paso 2: Confirmar Entrega
           </span>
 
-          {/* Delivery Photo - MANDATORY */}
-          <div className="mb-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Camera size={13} className="text-bs-orange" />
-              <span className="text-xs font-semibold text-bs-text">Foto de entrega</span>
-              <span className="text-[9px] text-bs-red font-bold">OBLIGATORIO</span>
+          {/* Bus Route - Driver Info */}
+          {isBusRoute && (
+            <div className="mb-4 p-3 bg-cyan-500/5 border border-cyan-500/20 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 mb-1">
+                <Bus size={14} className="text-cyan-400" />
+                <span className="text-xs font-semibold text-cyan-400">Datos del chofer</span>
+              </div>
+              <input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Nombre del chofer" className="w-full" />
+              <input value={driverPhone} onChange={(e) => setDriverPhone(e.target.value)} placeholder="Teléfono del chofer" type="tel" className="w-full" />
+              <div className="grid grid-cols-2 gap-2">
+                <input value={busFicha} onChange={(e) => setBusFicha(e.target.value)} placeholder="Ficha de la guagua" className="w-full" />
+                <input value={busPlate} onChange={(e) => setBusPlate(e.target.value)} placeholder="Placa de la guagua" className="w-full" />
+              </div>
             </div>
-            <PhotoCapture
-              label="Foto de entrega al cliente"
-              required
-              value={deliveryPhoto}
-              onChange={setDeliveryPhoto}
-            />
-          </div>
+          )}
 
           {/* Payment */}
           <div className="mb-4">
             <span className="text-xs font-semibold text-bs-text mb-2 block">
               Pago recibido
               {isTryFit && allItemsDecided && (
-                <span className="ml-2 text-bs-green font-bold">{formatRD(tryFitTotal)}</span>
+                <span className="ml-2 text-bs-green font-bold">{formatRD(order.total)}</span>
               )}
             </span>
             <div className="grid grid-cols-3 gap-2 mb-3">
@@ -537,8 +587,7 @@ export default function DeliveryOrderDetailPage() {
 
           {!canConfirmDelivery && (
             <p className="text-center text-[11px] text-bs-text-muted mt-2">
-              {!deliveryPhoto ? 'Debes tomar la foto de entrega' :
-               isTryFit && !allItemsDecided ? 'Marca todas las piezas arriba' :
+              {isTryFit && !allItemsDecided ? 'Marca todas las piezas arriba' :
                paymentMethod === 'transfer' && !paymentPhoto ? 'Sube la foto del comprobante' :
                paymentMethod === 'cash' && !cashAmount ? 'Ingresa el monto recibido' : ''}
             </p>
@@ -561,8 +610,8 @@ export default function DeliveryOrderDetailPage() {
                 Pendiente confirmación de pago por la tienda
               </p>
               <div className="mt-3 px-3 py-2 bg-bs-card rounded-xl inline-block">
-                <span className="text-xs text-bs-text-muted">Comisión estimada: </span>
-                <span className="text-sm font-bold text-bs-green">RD$ 150</span>
+                <span className="text-xs text-bs-text-muted">Comisión: </span>
+                <span className="text-sm font-bold text-bs-green">{formatRD(order.delivery_fee || 0)}</span>
               </div>
             </div>
           </Card>

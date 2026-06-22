@@ -6,7 +6,7 @@ interface CardProps {
   children: React.ReactNode;
   className?: string;
   onClick?: () => void;
-  highlight?: 'none' | 'accent' | 'success' | 'warning' | 'danger' | 'purple';
+  highlight?: 'none' | 'accent' | 'success' | 'warning' | 'danger' | 'purple' | 'cyan' | 'orange';
 }
 
 const highlightBorder = {
@@ -16,6 +16,8 @@ const highlightBorder = {
   warning: 'border-bs-orange/40',
   danger: 'border-bs-red/40',
   purple: 'border-purple-500/40',
+  cyan: 'border-cyan-500/40',
+  orange: 'border-orange-500/40',
 };
 
 export function Card({ children, className, onClick, highlight = 'none' }: CardProps) {

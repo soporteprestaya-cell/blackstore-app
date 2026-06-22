@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { DEMO_ORDERS } from '@/lib/demo-data';
+import { useAppStore } from '@/lib/store';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,9 +11,14 @@ import { MapPin, Phone, Package, Clock, Navigation, CheckCircle, Inbox } from 'l
 import Link from 'next/link';
 
 export default function MyOrdersPage() {
-  const activeOrders = DEMO_ORDERS.filter((o) =>
-    ['assigned', 'picked_up', 'in_transit', 'delivered'].includes(o.status) && o.assigned_delivery_id
+  const { orders, user } = useAppStore();
+  const myOrders = orders.filter((o) => o.assigned_delivery_id === user?.id);
+  const activeOrders = myOrders.filter((o) =>
+    ['assigned', 'picked_up', 'in_transit', 'delivered'].includes(o.status)
   );
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayCompleted = myOrders.filter((o) => ['delivered', 'completed'].includes(o.status) && o.created_at.slice(0, 10) === todayStr);
+  const todayCommission = todayCompleted.reduce((sum, o) => sum + (o.delivery_fee || 0), 0);
 
   if (activeOrders.length === 0) {
     return (
@@ -36,11 +41,11 @@ export default function MyOrdersPage() {
           <div className="text-[9px] text-bs-text-muted uppercase">Activos</div>
         </div>
         <div className="bg-bs-card border border-bs-border rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-bs-green">7</div>
+          <div className="text-xl font-bold text-bs-green">{todayCompleted.length}</div>
           <div className="text-[9px] text-bs-text-muted uppercase">Hoy</div>
         </div>
         <div className="bg-bs-card border border-bs-border rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-bs-orange">{formatRD(1050)}</div>
+          <div className="text-xl font-bold text-bs-orange">{formatRD(todayCommission)}</div>
           <div className="text-[9px] text-bs-text-muted uppercase">Comisión</div>
         </div>
       </div>

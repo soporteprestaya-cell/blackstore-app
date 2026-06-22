@@ -119,23 +119,23 @@ export function PhotoCapture({ label, required, value, onChange, className }: Ph
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={handleFileSelect}
         className="hidden"
       />
-      <button
-        onClick={startCamera}
-        type="button"
-        className={cn(
-          'w-full h-24 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-1.5 transition-all',
-          'hover:border-bs-accent hover:bg-bs-accent/5',
-          required ? 'border-bs-orange/50' : 'border-bs-border'
-        )}
-      >
-        <Camera size={22} className="text-bs-text-muted" />
-        <span className="text-xs text-bs-text-secondary">{label}</span>
-        {required && <span className="text-[10px] text-bs-orange">Obligatorio</span>}
-      </button>
+      <div className={cn(
+        'w-full border-2 border-dashed rounded-xl p-3 transition-all',
+        required ? 'border-bs-orange/50' : 'border-bs-border'
+      )}>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          type="button"
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-bs-surface hover:bg-bs-card transition-colors"
+        >
+          <ImageIcon size={16} className="text-bs-green" />
+          <span className="text-xs text-bs-text-secondary">{label}</span>
+        </button>
+        {required && <span className="block text-[10px] text-bs-orange text-center mt-1.5">Obligatorio</span>}
+      </div>
     </div>
   );
 }
