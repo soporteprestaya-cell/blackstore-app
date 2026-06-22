@@ -22,12 +22,10 @@ export default function DeliveryOrderDetailPage() {
   const order = orders.find((o) => o.id === id);
 
   const [status, setStatus] = useState(order?.status || 'assigned');
-  const [pickupPhoto, setPickupPhoto] = useState<string | undefined>();
   const [paymentPhoto, setPaymentPhoto] = useState<string | undefined>();
   const [paymentMethod, setPaymentMethod] = useState<'transfer' | 'cash' | 'prepaid'>(order?.payment_method || 'cash');
   const [cashAmount, setCashAmount] = useState('');
   const [deliveryNotes, setDeliveryNotes] = useState('');
-  const [returnPhoto, setReturnPhoto] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [driverName, setDriverName] = useState('');
   const [driverPhone, setDriverPhone] = useState('');
@@ -616,41 +614,6 @@ export default function DeliveryOrderDetailPage() {
             </div>
           </Card>
 
-          {/* Try-fit return reminder */}
-          {isTryFit && returnedItems.length > 0 && (
-            <Card highlight="warning">
-              <div className="flex items-center gap-2 mb-2">
-                <Repeat size={16} className="text-bs-orange" />
-                <span className="text-sm font-bold text-bs-orange">Devolución Pendiente</span>
-              </div>
-              <p className="text-[11px] text-bs-text-secondary mb-3">
-                Debes devolver estas piezas a la tienda. Un empleado debe confirmar que las recibió.
-              </p>
-              <div className="space-y-1.5">
-                {returnedItems.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between py-2 px-3 bg-bs-surface rounded-lg border border-bs-border">
-                    <div className="flex items-center gap-2">
-                      <Package size={13} className="text-bs-red" />
-                      <span className="text-xs">{item.product_name} {item.size && `(${item.size})`}</span>
-                    </div>
-                    <Badge variant="warning" size="sm">Pendiente</Badge>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 space-y-2">
-                <PhotoCapture
-                  label="Foto al devolver piezas en tienda"
-                  required
-                  value={returnPhoto}
-                  onChange={setReturnPhoto}
-                />
-                <Button variant="warning" size="sm" className="w-full" disabled={!returnPhoto}>
-                  <Repeat size={14} />
-                  Confirmar Devolución Entregada
-                </Button>
-              </div>
-            </Card>
-          )}
         </>
       )}
     </div>
