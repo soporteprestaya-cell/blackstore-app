@@ -84,6 +84,11 @@ function rowToOrder(row: any, items: OrderItem[], members: User[]): Order {
 }
 
 function itemToRow(item: OrderItem) {
+  let keptVal: string | null = null;
+  if (item.kept === true) keptVal = 'kept';
+  else if (item.kept === false) keptVal = 'returned';
+  else if (item.kept === 'received') keptVal = 'received';
+
   return {
     id: item.id,
     order_id: item.order_id,
@@ -93,7 +98,7 @@ function itemToRow(item: OrderItem) {
     quantity: item.quantity,
     unit_price: item.unit_price,
     is_try_fit: item.is_try_fit,
-    kept: item.kept === true ? 'kept' : item.kept === false ? 'returned' : item.kept === 'received' ? 'received' : null,
+    kept: keptVal,
   };
 }
 

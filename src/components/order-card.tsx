@@ -39,21 +39,20 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
       }
       className="animate-fade-in"
     >
-      {/* Top row: order number + status */}
-      <div className="flex items-center justify-between mb-2">
+      {/* Top row: customer name + status */}
+      <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-bold text-bs-text shrink-0">#{order.order_number}</span>
-          <span className="text-xs font-semibold text-bs-accent truncate">{order.customer?.name}</span>
+          <span className="text-sm font-bold text-bs-text truncate">{order.customer?.name || 'Cliente'}</span>
           {order.priority === 'urgent' && (
-            <span className="text-[9px] font-bold text-bs-red bg-red-500/15 px-1.5 py-0.5 rounded">URGENTE</span>
+            <span className="text-[9px] font-bold text-bs-red bg-red-500/15 px-1.5 py-0.5 rounded shrink-0">URGENTE</span>
           )}
           {order.type === 'try_fit' && (
-            <span className="flex items-center gap-0.5 text-[9px] font-bold text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded">
+            <span className="flex items-center gap-0.5 text-[9px] font-bold text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded shrink-0">
               <Repeat size={9} />PRUEBA
             </span>
           )}
           {order.delivery_method === 'bus_route' && (
-            <span className="flex items-center gap-0.5 text-[9px] font-bold text-cyan-400 bg-cyan-500/15 px-1.5 py-0.5 rounded">
+            <span className="flex items-center gap-0.5 text-[9px] font-bold text-cyan-400 bg-cyan-500/15 px-1.5 py-0.5 rounded shrink-0">
               <Bus size={9} />GUAGUA
             </span>
           )}
@@ -63,15 +62,14 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
         </Badge>
       </div>
 
-      {/* Customer info */}
-      <div className="flex items-center gap-1.5 text-xs text-bs-text-secondary mb-1">
-        <User size={12} />
-        <span>{order.customer?.name || 'Cliente'}</span>
+      {/* Order number + sector */}
+      <div className="flex items-center gap-1.5 text-xs text-bs-text-muted mb-1">
+        <span>#{order.order_number}</span>
         {order.customer?.sector && (
           <>
-            <span className="text-bs-text-muted">·</span>
+            <span>·</span>
             <MapPin size={11} />
-            <span className="text-bs-text-muted">{order.customer.sector}</span>
+            <span>{order.customer.sector}</span>
           </>
         )}
       </div>
