@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { useAppStore } from '@/lib/store';
+import { useAppStore, getLastLocalWrite } from '@/lib/store';
 import { fetchAllData, subscribeToChanges, syncAddTeamMember, syncAddOrder, syncAddCommissionPayment, syncAddNotification, syncSetDeliveryOnline } from '@/lib/supabase-sync';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { DEMO_USERS } from '@/lib/demo-data';
 import type { Notification as AppNotification } from '@/lib/types';
 
 const POLL_INTERVAL = 8000;
+const WRITE_COOLDOWN = 5000;
 
 function showSystemNotification(n: AppNotification) {
   if (typeof window === 'undefined') return;
@@ -55,6 +56,9 @@ function checkNewNotifications(
 }
 
 async function doSync() {
+  // Skip polling if a local write happened recently — prevents overwriting fresh changes
+  if (Date.now() - getLastLocalWrite() < WRITE_COOLDOWN) return;
+
   try {
     const data = await fetchAllData();
     if (!data) return;

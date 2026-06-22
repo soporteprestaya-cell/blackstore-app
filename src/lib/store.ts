@@ -38,6 +38,11 @@ interface AppState {
 const channel = typeof window !== 'undefined' ? new BroadcastChannel('blackstore-sync') : null;
 let isSyncUpdate = false;
 
+// Tracks last local write to prevent polling from overwriting fresh changes
+let _lastLocalWrite = 0;
+export function getLastLocalWrite() { return _lastLocalWrite; }
+function markLocalWrite() { _lastLocalWrite = Date.now(); }
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -46,10 +51,12 @@ export const useAppStore = create<AppState>()(
       orders: [],
       setOrders: (orders) => set({ orders }),
       addOrder: (order) => {
+        markLocalWrite();
         set((s) => ({ orders: [order, ...s.orders] }));
         syncAddOrder(order);
       },
       updateOrder: (id, updates) => {
+        markLocalWrite();
         set((s) => ({
           orders: s.orders.map((o) => (o.id === id ? { ...o, ...updates } : o)),
         }));
@@ -57,10 +64,12 @@ export const useAppStore = create<AppState>()(
       },
       commissionPayments: [],
       addCommissionPayment: (payment) => {
+        markLocalWrite();
         set((s) => ({ commissionPayments: [payment, ...s.commissionPayments] }));
         syncAddCommissionPayment(payment);
       },
       confirmCommissionPayment: (paymentId) => {
+        markLocalWrite();
         set((s) => ({
           commissionPayments: s.commissionPayments.map((p) =>
             p.id === paymentId ? { ...p, confirmed_by_delivery: true, confirmed_at: new Date().toISOString() } : p
