@@ -289,21 +289,21 @@ export default function NewOrderPage() {
             3. Envío
           </label>
           <div className="grid grid-cols-3 gap-2 mb-3">
-            <button type="button" onClick={() => { setDeliveryMethod('personal'); setSelectedDeliveryId(null); }}
+            <button type="button" onClick={() => setDeliveryMethod('personal')}
               className={`flex flex-col items-center justify-center gap-1 p-3 rounded-xl border text-xs font-medium transition-all ${
                 deliveryMethod === 'personal' ? 'border-bs-green bg-green-500/10 text-bs-green' : 'border-bs-border text-bs-text-secondary'
               }`}>
               <Truck size={16} />
               <span>Delivery personal</span>
             </button>
-            <button type="button" onClick={() => { setDeliveryMethod('bus_route'); setSelectedDeliveryId(null); }}
+            <button type="button" onClick={() => setDeliveryMethod('bus_route')}
               className={`flex flex-col items-center justify-center gap-1 p-3 rounded-xl border text-xs font-medium transition-all ${
                 deliveryMethod === 'bus_route' ? 'border-cyan-400 bg-cyan-500/10 text-cyan-400' : 'border-bs-border text-bs-text-secondary'
               }`}>
               <Bus size={16} />
               <span>Ruta de guagua</span>
             </button>
-            <button type="button" onClick={() => { setDeliveryMethod('shipping_company'); setSelectedDeliveryId(null); }}
+            <button type="button" onClick={() => setDeliveryMethod('shipping_company')}
               className={`flex flex-col items-center justify-center gap-1 p-3 rounded-xl border text-xs font-medium transition-all ${
                 deliveryMethod === 'shipping_company' ? 'border-orange-400 bg-orange-500/10 text-orange-400' : 'border-bs-border text-bs-text-secondary'
               }`}>
@@ -370,9 +370,8 @@ export default function NewOrderPage() {
           </div>
         </Card>
 
-        {/* 4. ASIGNAR DELIVERY — solo para delivery personal */}
-        {deliveryMethod === 'personal' && (
-          <Card>
+        {/* 4. ASIGNAR DELIVERY */}
+        <Card>
             <label className="block text-xs font-semibold text-bs-text-secondary uppercase tracking-wider mb-3">
               4. Asignar Delivery
             </label>
@@ -427,12 +426,11 @@ export default function NewOrderPage() {
               </p>
             )}
           </Card>
-        )}
 
         {/* 5. PAGO Y PRIORIDAD */}
         <Card>
           <label className="block text-xs font-semibold text-bs-text-secondary uppercase tracking-wider mb-3">
-            {deliveryMethod === 'personal' ? '5' : '4'}. Pago y prioridad
+            5. Pago y prioridad
           </label>
           <div className="grid grid-cols-3 gap-2 mb-3">
             {[
