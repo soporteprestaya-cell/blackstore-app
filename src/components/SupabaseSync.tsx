@@ -11,12 +11,23 @@ import type { Notification as AppNotification } from '@/lib/types';
 const POLL_INTERVAL = 5000;
 const WRITE_COOLDOWN = 5000;
 const PUSH_REVALIDATION_INTERVAL = 15 * 60 * 1000;
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 
 function checkDataVersion() {
   const stored = localStorage.getItem('blackstore-data-version');
   if (stored !== String(DATA_VERSION)) {
+    const raw = localStorage.getItem('blackstore-storage');
+    let savedUser = null;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        savedUser = parsed?.state?.user ?? null;
+      } catch { /* ignore */ }
+    }
     localStorage.removeItem('blackstore-storage');
+    if (savedUser) {
+      localStorage.setItem('blackstore-storage', JSON.stringify({ state: { user: savedUser }, version: 0 }));
+    }
     localStorage.setItem('blackstore-data-version', String(DATA_VERSION));
     window.location.reload();
     return false;
