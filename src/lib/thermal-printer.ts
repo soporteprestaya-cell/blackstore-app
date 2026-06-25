@@ -72,8 +72,6 @@ export function buildLabelData(order: Order): Uint8Array {
     ? `${(order as any).shipping_company.destination} (${(order as any).shipping_company.company})`
     : order.customer?.sector || '';
 
-  const mapsLink = order.location_url || order.customer?.location_url || '';
-
   return concat(
     ESCPOS.init(),
     ESCPOS.alignCenter(),
@@ -89,7 +87,6 @@ export function buildLabelData(order: Order): Uint8Array {
     ESCPOS.bold(false),
     encode(`${order.customer?.phone || '---'}\n`),
     encode(`${destination}\n`),
-    ...(mapsLink ? [encode(`${mapsLink}\n`)] : []),
     encode('Tienda: 8295798847\n'),
     ESCPOS.feed(1),
 

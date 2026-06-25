@@ -109,8 +109,6 @@ function printLabelBrowser(order: Order) {
     ? `${order.shipping_company.destination} (${order.shipping_company.company})`
     : order.customer?.sector || '';
 
-  const mapsLink = order.location_url || order.customer?.location_url || '';
-
   const w = window.open('', '_blank', 'width=420,height=500');
   if (!w) return;
 
@@ -182,7 +180,6 @@ function printLabelBrowser(order: Order) {
     <div class="name">${order.customer?.name || '—'}</div>
     <div class="phone">${order.customer?.phone || '—'}</div>
     <div class="dest">${destination}</div>
-    ${mapsLink ? `<div class="maps">${mapsLink}</div>` : ''}
     <div class="store-phone">Tienda: 8295798847</div>
   </div>
 </div>
