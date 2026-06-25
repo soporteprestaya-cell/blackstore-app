@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { SECTORS, generateOrderNumber, formatRD } from '@/lib/utils';
 import { ArrowLeft, Plus, Trash2, Truck, Bus, MapPin, CheckCircle, Phone, PackageCheck } from 'lucide-react';
+import { sendPushToUser } from '@/lib/push-notifications';
 import Link from 'next/link';
 import type { Order, DeliveryMethod } from '@/lib/types';
 
@@ -177,15 +178,17 @@ export default function NewOrderPage() {
     addOrder(newOrder);
 
     if (selectedDeliveryId && selectedDelivery) {
+      const assignMsg = `Nueva orden #${orderNumber} asignada — Cliente: ${customerName}, ${customerSector}`;
       addNotification({
         id: `n_${Date.now()}`,
         user_id: selectedDeliveryId,
         type: 'order_assigned',
-        message: `Nueva orden #${orderNumber} asignada — Cliente: ${customerName}, ${customerSector}`,
+        message: assignMsg,
         order_id: ordId,
         read: false,
         created_at: now,
       });
+      sendPushToUser(selectedDeliveryId, assignMsg, { url: `/my-orders/${ordId}` });
     }
 
     await new Promise((r) => setTimeout(r, 400));

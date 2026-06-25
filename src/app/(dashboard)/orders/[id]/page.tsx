@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { ORDER_STATUS_CONFIG, PAYMENT_STATUS_CONFIG, formatRD, formatDate, cn } from '@/lib/utils';
+import { sendPushToUser } from '@/lib/push-notifications';
 import {
   ArrowLeft, User, MapPin, Phone, Clock, Truck, CheckCircle, XCircle,
   DollarSign, Package, Repeat, AlertTriangle, Star, MessageSquare,
@@ -542,15 +543,17 @@ export default function OrderDetailPage() {
                   status: order.status === 'new' ? 'assigned' : order.status,
                   updated_at: now,
                 });
+                const assignMsg = `Nueva orden asignada — Cliente: ${order.customer?.name}, ${order.customer?.phone || ''}, ${order.customer?.sector || ''}`;
                 addNotification({
                   id: `n_assign_${Date.now()}`,
                   user_id: d.id,
                   type: 'order_assigned',
-                  message: `Nueva orden asignada — Cliente: ${order.customer?.name}, ${order.customer?.phone || ''}, ${order.customer?.sector || ''}`,
+                  message: assignMsg,
                   order_id: order.id,
                   read: false,
                   created_at: now,
                 });
+                sendPushToUser(d.id, assignMsg, { url: `/my-orders/${order.id}` });
                 setShowAssign(false);
               }}
               className="w-full flex items-center gap-3 p-3 bg-bs-card border border-bs-border rounded-xl hover:border-bs-accent transition-all text-left"
