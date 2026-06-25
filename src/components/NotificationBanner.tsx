@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, BellOff, CheckCircle } from 'lucide-react';
+import { Bell, BellOff, BellRing } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { subscribeToPush } from '@/lib/push-notifications';
 
@@ -11,7 +11,6 @@ export default function NotificationBanner() {
   const { user } = useAppStore();
   const [status, setStatus] = useState<Status>('loading');
   const [requesting, setRequesting] = useState(false);
-  const [justActivated, setJustActivated] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -27,7 +26,6 @@ export default function NotificationBanner() {
   }, [user?.id]);
 
   if (status === 'loading' || status === 'not-supported') return null;
-  if (status === 'granted' && !justActivated) return null;
 
   async function handleActivate() {
     if (!user) return;
@@ -37,8 +35,6 @@ export default function NotificationBanner() {
       setStatus(permission as Status);
       if (permission === 'granted') {
         await subscribeToPush(user.id);
-        setJustActivated(true);
-        setTimeout(() => setJustActivated(false), 3000);
       }
     } catch {
       setStatus('denied');
@@ -46,12 +42,13 @@ export default function NotificationBanner() {
     setRequesting(false);
   }
 
-  if (justActivated) {
+  if (status === 'granted') {
     return (
       <div className="mx-3 mt-2 mb-1">
-        <div className="bg-bs-green/15 border border-bs-green/30 rounded-2xl px-4 py-3 flex items-center gap-3">
-          <CheckCircle size={20} className="text-bs-green shrink-0" />
-          <p className="text-xs font-semibold text-bs-green">Notificaciones activadas correctamente</p>
+        <div className="bg-bs-green/10 border border-bs-green/20 rounded-2xl px-4 py-2.5 flex items-center gap-3">
+          <BellRing size={16} className="text-bs-green shrink-0" />
+          <p className="text-xs font-semibold text-bs-green flex-1">Notificaciones activas</p>
+          <div className="w-2 h-2 bg-bs-green rounded-full animate-pulse" />
         </div>
       </div>
     );
@@ -60,12 +57,12 @@ export default function NotificationBanner() {
   if (status === 'denied') {
     return (
       <div className="mx-3 mt-2 mb-1">
-        <div className="bg-bs-red/10 border border-bs-red/20 rounded-2xl px-4 py-3 flex items-center gap-3">
-          <BellOff size={20} className="text-bs-red shrink-0" />
+        <div className="bg-bs-red/10 border border-bs-red/20 rounded-2xl px-4 py-2.5 flex items-center gap-3">
+          <BellOff size={16} className="text-bs-red shrink-0" />
           <div className="flex-1">
             <p className="text-xs font-bold text-bs-red">Notificaciones bloqueadas</p>
             <p className="text-[10px] text-bs-text-muted mt-0.5">
-              Abre la configuracion del navegador y permite notificaciones para este sitio, luego recarga la pagina.
+              Ve a configuracion del navegador y permite notificaciones para este sitio.
             </p>
           </div>
         </div>
@@ -75,20 +72,13 @@ export default function NotificationBanner() {
 
   return (
     <div className="mx-3 mt-2 mb-1">
-      <div className="bg-bs-accent/10 border border-bs-accent/20 rounded-2xl px-4 py-3 flex items-center gap-3">
-        <div className="w-9 h-9 bg-bs-accent/20 rounded-full flex items-center justify-center shrink-0">
-          <Bell size={18} className="text-bs-accent" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-bold text-bs-text">Activa las notificaciones</p>
-          <p className="text-[10px] text-bs-text-muted mt-0.5">
-            Recibe alertas de ordenes y pagos aunque la app este cerrada.
-          </p>
-        </div>
+      <div className="bg-bs-accent/10 border border-bs-accent/20 rounded-2xl px-4 py-2.5 flex items-center gap-3">
+        <Bell size={16} className="text-bs-accent shrink-0" />
+        <p className="text-xs font-semibold text-bs-text flex-1">Notificaciones inactivas</p>
         <button
           onClick={handleActivate}
           disabled={requesting}
-          className="px-4 py-2 bg-bs-accent text-white text-xs font-bold rounded-xl active:scale-95 transition-transform shrink-0"
+          className="px-3 py-1.5 bg-bs-accent text-white text-[11px] font-bold rounded-xl active:scale-95 transition-transform shrink-0"
         >
           {requesting ? 'Activando...' : 'Activar'}
         </button>
