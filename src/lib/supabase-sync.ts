@@ -11,49 +11,16 @@ let _extraColumns: Set<string> | null = null;
 async function detectColumns() {
   if (_extraColumns !== null) return;
   _extraColumns = new Set();
-  try {
-    const { data } = await supabase.from('orders').select('*').limit(0);
-    if (data !== null) {
-      const { data: probe } = await supabase
-        .from('orders')
-        .select('shipping_company_name,payment_photo,package_photo')
-        .limit(0);
-      if (probe !== null) {
-        _extraColumns.add('shipping_company_name');
-        _extraColumns.add('shipping_company_destination');
-        _extraColumns.add('shipping_company_tracking');
-        _extraColumns.add('shipping_company_notes');
-        _extraColumns.add('payment_photo');
-        _extraColumns.add('package_photo');
-      }
-    }
-  } catch {
-    // columns don't exist
-  }
-  if (!_extraColumns.has('shipping_company_name')) {
+  const probes: [string, string[]][] = [
+    ['shipping_company_name', ['shipping_company_name', 'shipping_company_destination', 'shipping_company_tracking', 'shipping_company_notes']],
+    ['payment_photo', ['payment_photo']],
+    ['package_photo', ['package_photo']],
+  ];
+  for (const [col, cols] of probes) {
     try {
-      const { error } = await supabase.from('orders').select('shipping_company_name').limit(0);
-      if (!error) {
-        _extraColumns.add('shipping_company_name');
-        _extraColumns.add('shipping_company_destination');
-        _extraColumns.add('shipping_company_tracking');
-        _extraColumns.add('shipping_company_notes');
-      }
-    } catch { /* */ }
-  }
-  if (!_extraColumns.has('payment_photo')) {
-    try {
-      const { error } = await supabase.from('orders').select('payment_photo').limit(0);
-      if (!error) {
-        _extraColumns.add('payment_photo');
-      }
-    } catch { /* */ }
-    try {
-      const { error } = await supabase.from('orders').select('package_photo').limit(0);
-      if (!error) {
-        _extraColumns.add('package_photo');
-      }
-    } catch { /* */ }
+      const { error } = await supabase.from('orders').select(col).limit(0);
+      if (!error) cols.forEach((c) => _extraColumns!.add(c));
+    } catch { /* column doesn't exist */ }
   }
 }
 
@@ -100,7 +67,7 @@ function orderToRow(o: Order) {
     row.package_photo = o.package_photo || null;
   }
   if (has('payment_photo')) {
-    row.payment_photo = (o as any).payment_photo || null;
+    row.payment_photo = o.payment_photo || null;
   }
   return row;
 }
@@ -282,7 +249,7 @@ export async function syncUpdateOrder(id: string, updates: Partial<Order>) {
     if (updates.payment_method !== undefined) row.payment_method = updates.payment_method;
     if (updates.priority !== undefined) row.priority = updates.priority;
     if (has('package_photo') && updates.package_photo !== undefined) row.package_photo = updates.package_photo;
-    if (has('payment_photo') && (updates as any).payment_photo !== undefined) row.payment_photo = (updates as any).payment_photo;
+    if (has('payment_photo') && updates.payment_photo !== undefined) row.payment_photo = updates.payment_photo;
     const { error } = await supabase.from('orders').update(row).eq('id', id);
     if (error) {
       console.error('SYNC ERROR syncUpdateOrder:', error.message, error.details);

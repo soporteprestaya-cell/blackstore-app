@@ -84,6 +84,7 @@ export const useAppStore = create<AppState>()(
       teamMembers: [],
       setTeamMembers: (members) => set({ teamMembers: members }),
       addTeamMember: (member) => {
+        markLocalWrite();
         set((s) => ({ teamMembers: [...s.teamMembers, member] }));
         syncAddTeamMember(member);
       },

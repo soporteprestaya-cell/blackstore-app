@@ -213,7 +213,7 @@ export default function DeliveryOrderDetailPage() {
               Llamar
             </Button>
           </a>
-          <a href={`https://wa.me/1${order.customer?.phone.replace(/\D/g, '')}`}>
+          <a href={`https://wa.me/1${(order.customer?.phone || '').replace(/\D/g, '')}`}>
             <Button variant="outline" size="sm" className="w-full">
               <MessageSquare size={13} />
               WhatsApp
