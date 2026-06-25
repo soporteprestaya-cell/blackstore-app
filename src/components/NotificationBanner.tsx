@@ -1,69 +1,97 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, X } from 'lucide-react';
+import { Bell, BellOff, CheckCircle } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { subscribeToPush } from '@/lib/push-notifications';
 
+type Status = 'loading' | 'not-supported' | 'denied' | 'default' | 'granted';
+
 export default function NotificationBanner() {
   const { user } = useAppStore();
-  const [show, setShow] = useState(false);
+  const [status, setStatus] = useState<Status>('loading');
   const [requesting, setRequesting] = useState(false);
+  const [justActivated, setJustActivated] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    if (!('Notification' in window)) return;
-    if (Notification.permission === 'default') {
-      setShow(true);
-    } else if (Notification.permission === 'granted') {
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      setStatus('not-supported');
+      return;
+    }
+    const perm = Notification.permission as string;
+    setStatus(perm as Status);
+    if (perm === 'granted') {
       subscribeToPush(user.id);
     }
   }, [user?.id]);
 
-  if (!show) return null;
+  if (status === 'loading' || status === 'not-supported') return null;
+  if (status === 'granted' && !justActivated) return null;
 
-  async function handleAccept() {
+  async function handleActivate() {
+    if (!user) return;
     setRequesting(true);
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted' && user) {
-      await subscribeToPush(user.id);
+    try {
+      const permission = await Notification.requestPermission();
+      setStatus(permission as Status);
+      if (permission === 'granted') {
+        await subscribeToPush(user.id);
+        setJustActivated(true);
+        setTimeout(() => setJustActivated(false), 3000);
+      }
+    } catch {
+      setStatus('denied');
     }
-    setShow(false);
     setRequesting(false);
   }
 
-  return (
-    <div className="fixed top-0 left-0 right-0 z-[60] animate-in slide-in-from-top">
-      <div className="mx-2 mt-2 bg-bs-accent rounded-2xl p-4 shadow-2xl shadow-bs-accent/30 border border-bs-accent/50">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0">
-            <Bell size={20} className="text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white">Activa las notificaciones</p>
-            <p className="text-xs text-white/80 mt-0.5">
-              Recibe alertas instantáneas de nuevas órdenes, pagos y entregas — incluso con la app cerrada.
-            </p>
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={handleAccept}
-                disabled={requesting}
-                className="px-4 py-2 bg-white text-bs-accent text-xs font-bold rounded-xl active:scale-95 transition-transform"
-              >
-                {requesting ? 'Activando...' : 'Activar ahora'}
-              </button>
-              <button
-                onClick={() => setShow(false)}
-                className="px-3 py-2 text-white/70 text-xs font-medium rounded-xl hover:text-white transition-colors"
-              >
-                Ahora no
-              </button>
-            </div>
-          </div>
-          <button onClick={() => setShow(false)} className="p-1 text-white/50 hover:text-white">
-            <X size={16} />
-          </button>
+  if (justActivated) {
+    return (
+      <div className="mx-3 mt-2 mb-1">
+        <div className="bg-bs-green/15 border border-bs-green/30 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <CheckCircle size={20} className="text-bs-green shrink-0" />
+          <p className="text-xs font-semibold text-bs-green">Notificaciones activadas correctamente</p>
         </div>
+      </div>
+    );
+  }
+
+  if (status === 'denied') {
+    return (
+      <div className="mx-3 mt-2 mb-1">
+        <div className="bg-bs-red/10 border border-bs-red/20 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <BellOff size={20} className="text-bs-red shrink-0" />
+          <div className="flex-1">
+            <p className="text-xs font-bold text-bs-red">Notificaciones bloqueadas</p>
+            <p className="text-[10px] text-bs-text-muted mt-0.5">
+              Abre la configuracion del navegador y permite notificaciones para este sitio, luego recarga la pagina.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-3 mt-2 mb-1">
+      <div className="bg-bs-accent/10 border border-bs-accent/20 rounded-2xl px-4 py-3 flex items-center gap-3">
+        <div className="w-9 h-9 bg-bs-accent/20 rounded-full flex items-center justify-center shrink-0">
+          <Bell size={18} className="text-bs-accent" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold text-bs-text">Activa las notificaciones</p>
+          <p className="text-[10px] text-bs-text-muted mt-0.5">
+            Recibe alertas de ordenes y pagos aunque la app este cerrada.
+          </p>
+        </div>
+        <button
+          onClick={handleActivate}
+          disabled={requesting}
+          className="px-4 py-2 bg-bs-accent text-white text-xs font-bold rounded-xl active:scale-95 transition-transform shrink-0"
+        >
+          {requesting ? 'Activando...' : 'Activar'}
+        </button>
       </div>
     </div>
   );
