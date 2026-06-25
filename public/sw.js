@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'blackstore-v3-' + Date.now();
+const CACHE_VERSION = 'blackstore-v4';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
