@@ -8,6 +8,7 @@ import {
   syncRemoveTeamMember, syncAddCommissionPayment, syncConfirmCommissionPayment,
   syncAddNotification, syncMarkNotificationRead, syncSetDeliveryOnline, syncClearData,
 } from './supabase-sync';
+import { sendPushToUser, sendPushBroadcast } from './push-notifications';
 
 interface AppState {
   user: User | null;
@@ -100,6 +101,18 @@ export const useAppStore = create<AppState>()(
       addNotification: (n) => {
         set((s) => ({ notifications: [n, ...s.notifications].slice(0, 50) }));
         syncAddNotification(n);
+        const isUrgent = n.message.includes('URGENTE');
+        const isTransferVerify = isUrgent && n.message.includes('transferencia');
+        const targetUserId = n.user_id || undefined;
+        const baseUrl = n.order_id ? `/orders/${n.order_id}` : '/';
+        const pushUrl = isTransferVerify ? `${baseUrl}?confirm=1` : baseUrl;
+        const pushTitle = isUrgent ? 'BlackStore RD — URGENTE' : 'BlackStore RD';
+
+        if (targetUserId) {
+          sendPushToUser(targetUserId, n.message, { title: pushTitle, url: pushUrl });
+        } else {
+          sendPushBroadcast(n.message, { title: pushTitle, url: pushUrl });
+        }
       },
       markNotificationRead: (id) => {
         set((s) => ({

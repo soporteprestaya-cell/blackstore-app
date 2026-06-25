@@ -6,10 +6,10 @@ import { OrderCard } from '@/components/order-card';
 import { StatCard } from '@/components/ui/stat-card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { cn } from '@/lib/utils';
+import { cn, formatRD } from '@/lib/utils';
 import {
   Plus, Search, ClipboardList, Clock, Truck, CheckCircle,
-  DollarSign, AlertCircle, Filter,
+  DollarSign, AlertCircle, Filter, Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { OrderStatus } from '@/lib/types';
@@ -24,9 +24,55 @@ const FILTER_TABS: { label: string; statuses: OrderStatus[] }[] = [
 ];
 
 export default function OrdersPage() {
-  const { orders } = useAppStore();
+  const { orders, user, updateOrder, addNotification } = useAppStore();
   const [activeFilter, setActiveFilter] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const isAdmin = user?.role === 'admin';
+
+  const pendingTransfers = useMemo(() =>
+    orders.filter((o) =>
+      o.payment_method === 'transfer' &&
+      o.payment_status !== 'verified' &&
+      o.status === 'delivered'
+    ),
+  [orders]);
+
+  function quickConfirmTransfer(orderId: string) {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    setConfirmingId(orderId);
+    const now = new Date().toISOString();
+    const isTryFit = order.type === 'try_fit';
+    const returnedItems = order.items.filter((i) => i.is_try_fit && (i.kept === false || i.kept === 'received'));
+    const allReturnsReceived = returnedItems.length > 0 && returnedItems.every((i) => (i as any).kept === 'received');
+    const canComplete = isTryFit ? (returnedItems.length === 0 || allReturnsReceived) : true;
+    const newStatus = canComplete && order.status === 'delivered' ? 'completed' : order.status;
+
+    updateOrder(order.id, { payment_status: 'verified', status: newStatus, updated_at: now });
+
+    if (order.assigned_delivery_id) {
+      addNotification({
+        id: `n_pay_del_${Date.now()}`,
+        user_id: order.assigned_delivery_id,
+        type: 'payment_confirmed',
+        message: `Pago confirmado por ${user?.name || 'Admin'} — ${order.customer?.name || ''} (${order.customer?.phone || ''}) ${formatRD(order.total)}`,
+        order_id: order.id,
+        read: false,
+        created_at: now,
+      });
+    }
+    addNotification({
+      id: `n_pay_emp_${Date.now()}`,
+      user_id: '2',
+      type: 'payment_confirmed',
+      message: `Pago verificado — ${order.customer?.name || ''} (${order.customer?.phone || ''}) ${formatRD(order.total)}`,
+      order_id: order.id,
+      read: false,
+      created_at: now,
+    });
+    setTimeout(() => setConfirmingId(null), 600);
+  }
 
   const stats = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -60,6 +106,50 @@ export default function OrdersPage() {
 
   return (
     <div className="px-4 py-4 space-y-4">
+      {/* Pending Transfers — CEO Quick Confirm */}
+      {isAdmin && pendingTransfers.length > 0 && (
+        <div className="bg-red-500/10 border-2 border-red-500/30 rounded-2xl p-3 space-y-2">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-6 h-6 bg-red-500/20 rounded-full flex items-center justify-center animate-pulse">
+              <Zap size={14} className="text-red-400" />
+            </div>
+            <span className="text-xs font-bold text-red-400 uppercase tracking-wider">
+              {pendingTransfers.length} transferencia{pendingTransfers.length > 1 ? 's' : ''} por verificar
+            </span>
+          </div>
+          {pendingTransfers.map((order) => (
+            <div key={order.id} className="flex items-center gap-2 bg-bs-surface/60 rounded-xl p-2.5">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold">{order.customer?.name}</span>
+                  <span className="text-[10px] text-bs-text-muted truncate">{order.customer?.phone}</span>
+                </div>
+                <div className="text-sm font-bold text-bs-green">{formatRD(order.total)}</div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Link href={`/orders/${order.id}?confirm=1`}>
+                  <button className="p-1.5 hover:bg-bs-card rounded-lg transition-colors text-bs-text-muted">
+                    <Search size={13} />
+                  </button>
+                </Link>
+                <button
+                  onClick={() => quickConfirmTransfer(order.id)}
+                  disabled={confirmingId === order.id}
+                  className={cn(
+                    'px-3 py-1.5 text-xs font-bold rounded-lg transition-all',
+                    confirmingId === order.id
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-green-500 text-white active:scale-95'
+                  )}
+                >
+                  {confirmingId === order.id ? 'Listo' : 'Confirmar'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard label="Pendientes" value={stats.orders_pending} icon={Clock} color="orange" />

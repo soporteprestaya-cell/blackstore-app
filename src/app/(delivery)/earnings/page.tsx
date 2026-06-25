@@ -222,7 +222,7 @@ export default function EarningsPage() {
                       {(dayOrders as any[]).map((o) => (
                         <div key={o.id} className="flex items-center justify-between px-3 py-2 border-l-2 border-bs-border">
                           <div>
-                            <div className="text-[11px] font-medium">#{o.order_number} — {o.customer?.name}</div>
+                            <div className="text-[11px] font-medium">{o.customer?.phone} — {o.customer?.name}</div>
                             <div className="text-[9px] text-bs-text-muted">
                               {o.payment_method === 'cash' ? '💵 Efectivo' : '📱 Transfer'}
                               {' · '}Total: {formatRD(o.total)}

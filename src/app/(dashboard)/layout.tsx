@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useAppStore } from '@/lib/store';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ClipboardList, Truck, BarChart3, Settings, LogOut, Bell, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fetchAllData } from '@/lib/supabase-sync';
+import NotificationBanner from '@/components/NotificationBanner';
 
 const navItems = [
   { href: '/orders', icon: ClipboardList, label: 'Órdenes' },
@@ -18,6 +19,8 @@ const navItems = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, setUser, notifications: allNotifs, markNotificationRead, _hydrated } = useAppStore();
   const [showNotifs, setShowNotifs] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncDone, setSyncDone] = useState(false);
   const notifications = allNotifs.filter((n) => {
     if (!n.user_id) return true;
     if (user?.role === 'admin') return n.user_id === 'admin' || !n.user_id;
@@ -25,6 +28,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   });
   const unreadCount = notifications.filter((n) => !n.read).length;
   const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     if (!_hydrated) return;
@@ -44,6 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="h-full flex flex-col bg-bs-bg">
+      <NotificationBanner />
       <header className="sticky top-0 z-40 bg-bs-surface/80 backdrop-blur-xl border-b border-bs-border px-4 py-3">
         <div className="flex items-center justify-between max-w-4xl mx-auto">
           <div className="flex items-center gap-3">
@@ -56,22 +61,47 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-1">
             <button
               onClick={async () => {
-                const data = await fetchAllData();
-                if (data) {
-                  useAppStore.setState({
-                    teamMembers: data.teamMembers.length > 0 ? data.teamMembers : useAppStore.getState().teamMembers,
-                    orders: data.orders.length > 0 ? data.orders : useAppStore.getState().orders,
-                    commissionPayments: data.commissionPayments,
-                    paidOrderIds: data.paidOrderIds,
-                    notifications: data.notifications,
-                    deliveryOnline: data.deliveryOnline,
-                  });
+                if (syncing) return;
+                setSyncing(true);
+                setSyncDone(false);
+                try {
+                  if ('serviceWorker' in navigator) {
+                    const reg = await navigator.serviceWorker.getRegistration();
+                    if (reg) {
+                      if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+                      await reg.update();
+                    }
+                    await caches.keys().then((k) => Promise.all(k.map((n) => caches.delete(n))));
+                  }
+                  const data = await fetchAllData();
+                  if (data) {
+                    useAppStore.setState({
+                      teamMembers: data.teamMembers.length > 0 ? data.teamMembers : useAppStore.getState().teamMembers,
+                      orders: data.orders.length > 0 ? data.orders : useAppStore.getState().orders,
+                      commissionPayments: data.commissionPayments,
+                      paidOrderIds: data.paidOrderIds,
+                      notifications: data.notifications,
+                      deliveryOnline: data.deliveryOnline,
+                    });
+                  }
+                  setSyncDone(true);
+                  setTimeout(() => setSyncDone(false), 2000);
+                } catch (e) {
+                  console.error('Sync error:', e);
+                } finally {
+                  setSyncing(false);
                 }
               }}
-              className="p-2 hover:bg-bs-card rounded-xl transition-colors"
-              title="Actualizar"
+              className={cn(
+                'p-2 rounded-xl transition-colors',
+                syncDone ? 'bg-green-500/20' : 'hover:bg-bs-card'
+              )}
+              title="Actualizar datos y app"
             >
-              <RefreshCw size={16} className="text-bs-text-secondary" />
+              <RefreshCw size={16} className={cn(
+                syncing && 'animate-spin',
+                syncDone ? 'text-bs-green' : 'text-bs-text-secondary'
+              )} />
             </button>
             <button
               onClick={() => setShowNotifs(!showNotifs)}
@@ -103,21 +133,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {notifications.length === 0 ? (
             <p className="text-xs text-bs-text-muted text-center py-4">Sin notificaciones</p>
           ) : (
-            notifications.slice(0, 20).map((n) => (
-              <div
-                key={n.id}
-                onClick={() => markNotificationRead(n.id)}
-                className={cn(
-                  'p-2.5 rounded-xl mb-1 text-xs cursor-pointer transition-colors',
-                  n.read ? 'bg-bs-surface text-bs-text-muted' : 'bg-bs-accent/10 text-bs-text border-l-2 border-bs-accent'
-                )}
-              >
-                {n.message}
-                <div className="text-[9px] text-bs-text-muted mt-1">
-                  {new Date(n.created_at).toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}
+            notifications.slice(0, 20).map((n) => {
+              const isTransferUrgent = n.message.includes('URGENTE') && n.message.includes('transferencia');
+              return (
+                <div
+                  key={n.id}
+                  onClick={() => {
+                    markNotificationRead(n.id);
+                    if (n.order_id) {
+                      const url = isTransferUrgent
+                        ? `/orders/${n.order_id}?confirm=1`
+                        : `/orders/${n.order_id}`;
+                      router.push(url);
+                      setShowNotifs(false);
+                    }
+                  }}
+                  className={cn(
+                    'p-2.5 rounded-xl mb-1 text-xs cursor-pointer transition-colors',
+                    n.read ? 'bg-bs-surface text-bs-text-muted' : 'bg-bs-accent/10 text-bs-text border-l-2 border-bs-accent',
+                    isTransferUrgent && !n.read && 'border-l-2 border-red-500 bg-red-500/10'
+                  )}
+                >
+                  {n.message}
+                  <div className="text-[9px] text-bs-text-muted mt-1">
+                    {new Date(n.created_at).toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}

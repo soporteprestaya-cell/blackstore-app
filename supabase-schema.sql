@@ -32,10 +32,14 @@ create table if not exists orders (
   notes text,
   source text default 'store',
   priority text default 'normal' check (priority in ('normal', 'urgent')),
-  delivery_method text default 'personal' check (delivery_method in ('personal', 'bus_route')),
+  delivery_method text default 'personal' check (delivery_method in ('personal', 'bus_route', 'shipping_company')),
   bus_route_company text,
   bus_route_destination text,
   bus_route_notes text,
+  shipping_company_name text,
+  shipping_company_destination text,
+  shipping_company_tracking text,
+  shipping_company_notes text,
   product_photos text[] default '{}',
   package_photo text,
   created_by text references team_members(id),
@@ -88,8 +92,28 @@ create table if not exists delivery_online (
   updated_at timestamptz default now()
 );
 
--- 7. Schema migrations (run these if tables already exist)
+-- 7. Push Subscriptions (for Web Push notifications)
+create table if not exists push_subscriptions (
+  id serial primary key,
+  user_id text not null,
+  endpoint text unique not null,
+  keys_p256dh text not null,
+  keys_auth text not null,
+  updated_at timestamptz default now()
+);
+
+alter publication supabase_realtime add table push_subscriptions;
+alter table push_subscriptions enable row level security;
+create policy "Allow all on push_subscriptions" on push_subscriptions for all using (true) with check (true);
+
+-- 8. Schema migrations (run these if tables already exist)
 alter table orders add column if not exists payment_photo text;
+alter table orders add column if not exists shipping_company_name text;
+alter table orders add column if not exists shipping_company_destination text;
+alter table orders add column if not exists shipping_company_tracking text;
+alter table orders add column if not exists shipping_company_notes text;
+alter table orders drop constraint if exists orders_delivery_method_check;
+alter table orders add constraint orders_delivery_method_check check (delivery_method in ('personal', 'bus_route', 'shipping_company'));
 alter table order_items drop constraint if exists order_items_kept_check;
 alter table order_items add constraint order_items_kept_check check (kept in ('kept', 'returned', 'received'));
 

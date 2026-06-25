@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <script
           dangerouslySetInnerHTML={{
-            __html: `if('serviceWorker'in navigator){if(!sessionStorage.getItem('sw_clean')){caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})});sessionStorage.setItem('sw_clean','1')}navigator.serviceWorker.register('/sw.js').then(function(reg){setInterval(function(){reg.update()},60000);reg.addEventListener('updatefound',function(){var w=reg.installing;if(w){w.addEventListener('statechange',function(){if(w.state==='installed'&&navigator.serviceWorker.controller){w.postMessage('SKIP_WAITING')}})}})})}`,
+            __html: `if('serviceWorker'in navigator){navigator.serviceWorker.addEventListener('message',function(e){if(e.data&&e.data.type==='SW_UPDATED'){window.location.reload()}});navigator.serviceWorker.register('/sw.js').then(function(reg){setInterval(function(){reg.update()},30000);reg.addEventListener('updatefound',function(){var w=reg.installing;if(w){w.addEventListener('statechange',function(){if(w.state==='installed'&&navigator.serviceWorker.controller){w.postMessage('SKIP_WAITING')}})}})});navigator.serviceWorker.ready.then(function(reg){reg.update()})}`,
           }}
         />
       </body>

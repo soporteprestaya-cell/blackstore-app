@@ -61,7 +61,7 @@ export default function MyOrdersPage() {
                 className="animate-fade-in"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-bold">#{order.order_number}</span>
+                  <span className="text-sm font-bold">{order.customer?.name || 'Cliente'}</span>
                   <Badge variant={order.status === 'in_transit' ? 'blue' : 'warning'} size="sm">
                     {statusCfg.label}
                   </Badge>

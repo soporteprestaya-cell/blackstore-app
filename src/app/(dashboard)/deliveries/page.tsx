@@ -280,7 +280,10 @@ export default function DeliveriesPage() {
                                 {dayOrders.map((o) => (
                                   <div key={o.id} className="flex items-center justify-between px-2 py-1.5 border-l-2 border-bs-border">
                                     <div>
-                                      <div className="text-[11px] font-medium">#{o.order_number} — {o.customer?.name}</div>
+                                      <div className="text-[11px] font-medium">
+                                        <a href={`https://wa.me/1${o.customer?.phone?.replace(/\D/g, '') || ''}`} target="_blank" className="text-bs-accent hover:underline font-bold">{o.customer?.phone}</a>
+                                        {' — '}<span className="text-bs-text-muted">{o.customer?.name}</span>
+                                      </div>
                                       <div className="text-[9px] text-bs-text-muted">
                                         {o.payment_method === 'cash' ? '💵 Efectivo' : o.payment_method === 'transfer' ? '📱 Transfer' : '✅ Prepago'}
                                         {' · '}Total: {formatRD(o.total)} · Comisión: {formatRD(o.delivery_fee || 0)}
@@ -415,7 +418,7 @@ export default function DeliveriesPage() {
                   {[...data.cashOrders, ...data.transferOrders].map((o) => (
                     <div key={o.id} className="flex justify-between px-2 py-1.5 bg-bs-surface rounded-lg">
                       <div>
-                        <span className="font-medium">#{o.order_number}</span>
+                        <a href={`https://wa.me/1${o.customer?.phone?.replace(/\D/g, '') || ''}`} target="_blank" className="font-bold text-bs-accent hover:underline">{o.customer?.phone}</a>
                         <span className="text-bs-text-muted ml-1">— {o.customer?.name}</span>
                       </div>
                       <div className="flex items-center gap-2">

@@ -28,6 +28,10 @@ function orderToRow(o: Order) {
     bus_route_company: o.bus_route?.company || null,
     bus_route_destination: o.bus_route?.route || null,
     bus_route_notes: o.bus_route?.notes || null,
+    shipping_company_name: o.shipping_company?.company || null,
+    shipping_company_destination: o.shipping_company?.destination || null,
+    shipping_company_tracking: o.shipping_company?.tracking_number || null,
+    shipping_company_notes: o.shipping_company?.notes || null,
     product_photos: o.product_photos || [],
     package_photo: o.package_photo || null,
     created_by: o.created_by,
@@ -70,6 +74,9 @@ function rowToOrder(row: any, items: OrderItem[], members: User[]): Order {
     delivery_method: row.delivery_method || 'personal',
     bus_route: row.bus_route_company
       ? { company: row.bus_route_company, route: row.bus_route_destination || '', terminal: '', notes: row.bus_route_notes }
+      : undefined,
+    shipping_company: row.shipping_company_name
+      ? { company: row.shipping_company_name, destination: row.shipping_company_destination || '', tracking_number: row.shipping_company_tracking, notes: row.shipping_company_notes }
       : undefined,
     location_url: row.customer_location_url,
     product_photos: row.product_photos || [],
@@ -195,6 +202,7 @@ export async function syncUpdateOrder(id: string, updates: Partial<Order>) {
   if (updates.payment_status !== undefined) row.payment_status = updates.payment_status;
   if (updates.assigned_delivery_id !== undefined) row.assigned_delivery_id = updates.assigned_delivery_id;
   if (updates.package_photo !== undefined) row.package_photo = updates.package_photo;
+  if ((updates as any).payment_photo !== undefined) row.payment_photo = (updates as any).payment_photo;
   if (updates.notes !== undefined) row.notes = updates.notes;
   if (updates.delivery_fee !== undefined) row.delivery_fee = updates.delivery_fee;
   if (updates.total !== undefined) row.total = updates.total;
@@ -281,17 +289,32 @@ export async function syncClearData() {
 export function subscribeToChanges(onUpdate: () => void) {
   if (!isSupabaseConfigured) return () => {};
 
+  const channelName = `blackstore-realtime-${Date.now()}`;
+  let reconnectTimer: ReturnType<typeof setTimeout>;
+
   const channel = supabase
-    .channel('blackstore-realtime')
+    .channel(channelName)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, onUpdate)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, onUpdate)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'team_members' }, onUpdate)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'commission_payments' }, onUpdate)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, onUpdate)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_online' }, onUpdate)
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(() => {
+          supabase.removeChannel(channel);
+          subscribeToChanges(onUpdate);
+        }, 3000);
+      }
+      if (status === 'SUBSCRIBED') {
+        onUpdate();
+      }
+    });
 
   return () => {
+    clearTimeout(reconnectTimer);
     supabase.removeChannel(channel);
   };
 }

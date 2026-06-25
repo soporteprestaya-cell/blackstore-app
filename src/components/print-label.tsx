@@ -2,13 +2,29 @@
 
 import type { Order } from '@/lib/types';
 import { formatRD } from '@/lib/utils';
+import { printThermalLabel, isPrinterConnected } from '@/lib/thermal-printer';
 
-export function printLabel(order: Order) {
+export async function printLabel(order: Order): Promise<void> {
+  const result = await printThermalLabel(order);
+
+  if (result.success) return;
+
+  if (!result.success && result.fallback) {
+    printLabelBrowser(order);
+    return;
+  }
+
+  if (!result.success && !result.fallback) return;
+}
+
+function printLabelBrowser(order: Order) {
   const destination = order.delivery_method === 'bus_route' && order.bus_route
     ? `${order.bus_route.route || order.bus_route.terminal}${order.bus_route.company ? ` (${order.bus_route.company})` : ''}`
-    : order.customer?.address || '';
+    : order.delivery_method === 'shipping_company' && order.shipping_company
+    ? `${order.shipping_company.destination} (${order.shipping_company.company})`
+    : order.customer?.sector || '';
 
-  const sector = order.customer?.sector || '';
+  const mapsLink = order.location_url || order.customer?.location_url || '';
 
   const w = window.open('', '_blank', 'width=420,height=500');
   if (!w) return;
@@ -17,9 +33,9 @@ export function printLabel(order: Order) {
 <html>
 <head>
 <meta charset="utf-8">
-<title>Etiqueta #${order.order_number}</title>
+<title>Etiqueta</title>
 <style>
-  @page { margin: 0; size: auto; }
+  @page { margin: 0; size: 58mm auto; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: 'Arial', 'Helvetica', sans-serif;
@@ -31,68 +47,48 @@ export function printLabel(order: Order) {
     background: #fff;
   }
   .label {
-    border: 2px solid #000;
-    border-radius: 6px;
-    padding: 10px;
+    padding: 6px 10px;
   }
-  .header {
+  .brand {
     text-align: center;
-    border-bottom: 2px solid #000;
-    padding-bottom: 8px;
-    margin-bottom: 8px;
-  }
-  .header .order-num {
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 900;
-    margin-top: 2px;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #ccc;
   }
-  .row {
-    display: flex;
-    align-items: flex-start;
-    padding: 5px 0;
-    border-bottom: 1px dashed #ccc;
+  .info {
     font-size: 13px;
-    line-height: 1.3;
+    line-height: 1.6;
   }
-  .row:last-child { border-bottom: none; }
-  .row .icon {
-    width: 22px;
-    font-size: 14px;
-    flex-shrink: 0;
-    text-align: center;
+  .info .name {
+    font-size: 15px;
+    font-weight: 800;
   }
-  .row .lbl {
-    font-weight: 700;
-    min-width: 65px;
-    flex-shrink: 0;
+  .info .phone {
+    font-weight: 600;
   }
-  .row .val {
-    flex: 1;
-    word-break: break-word;
+  .info .dest {
+    font-weight: 600;
+  }
+  .info .maps {
+    font-size: 11px;
+    color: #333;
+    word-break: break-all;
+  }
+  .info .store-phone {
+    font-size: 12px;
+    color: #333;
+    margin-top: 4px;
   }
   .total-row {
-    padding: 8px 0 4px;
+    padding: 6px 0 4px;
     font-size: 20px;
     font-weight: 900;
     text-align: center;
-    border-top: 2px solid #000;
+    border-top: 1px solid #ccc;
     margin-top: 6px;
-  }
-  .footer {
-    text-align: center;
-    margin-top: 8px;
-    padding-top: 6px;
-    border-top: 1px solid #eee;
-  }
-  .footer img {
-    height: 28px;
-    opacity: 0.7;
-  }
-  .footer .brand {
-    font-size: 11px;
-    font-weight: 900;
-    letter-spacing: 2px;
-    color: #333;
   }
   @media print {
     body { padding: 0; max-width: none; }
@@ -102,42 +98,18 @@ export function printLabel(order: Order) {
 </head>
 <body>
 <div class="label">
-  <div class="header">
-    <div class="order-num">#${order.order_number}</div>
-  </div>
+  <div class="brand">BLACKSTORE RD</div>
 
-  <div class="row">
-    <span class="icon">👤</span>
-    <span class="lbl">Cliente:</span>
-    <span class="val">${order.customer?.name || '—'}</span>
+  <div class="info">
+    <div class="name">${order.customer?.name || '—'}</div>
+    <div class="phone">${order.customer?.phone || '—'}</div>
+    <div class="dest">${destination}</div>
+    ${mapsLink ? `<div class="maps">${mapsLink}</div>` : ''}
+    <div class="store-phone">Tienda: 8295798847</div>
   </div>
-
-  <div class="row">
-    <span class="icon">📞</span>
-    <span class="lbl">Tel:</span>
-    <span class="val">${order.customer?.phone || '—'}</span>
-  </div>
-
-  <div class="row">
-    <span class="icon">📍</span>
-    <span class="lbl">Destino:</span>
-    <span class="val">${destination}${sector ? ` — ${sector}` : ''}</span>
-  </div>
-
-  ${order.delivery_method === 'bus_route' && order.bus_route ? `
-  <div class="row">
-    <span class="icon">🚌</span>
-    <span class="lbl">Guagua:</span>
-    <span class="val">${order.bus_route.company}${order.bus_route.notes ? ` — ${order.bus_route.notes}` : ''}</span>
-  </div>
-  ` : ''}
 
   <div class="total-row">
     ${formatRD(order.total)}
-  </div>
-
-  <div class="footer">
-    <span class="brand">BLACKSTORE RD</span>
   </div>
 </div>
 
@@ -151,7 +123,7 @@ export function printLabel(order: Order) {
     border: none;
     border-radius: 8px;
     cursor: pointer;
-  ">🖨️ Imprimir Etiqueta</button>
+  ">Imprimir Etiqueta</button>
 </div>
 
 <script>

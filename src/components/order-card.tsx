@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import type { Order } from '@/lib/types';
 import { formatRD, timeAgo, ORDER_STATUS_CONFIG, PAYMENT_STATUS_CONFIG } from '@/lib/utils';
-import { Clock, MapPin, User, Truck, AlertTriangle, Repeat, Bus } from 'lucide-react';
+import { Clock, MapPin, User, Truck, AlertTriangle, Repeat, Bus, PackageCheck } from 'lucide-react';
 
 interface OrderCardProps {
   order: Order;
@@ -56,15 +56,20 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
               <Bus size={9} />GUAGUA
             </span>
           )}
+          {order.delivery_method === 'shipping_company' && (
+            <span className="flex items-center gap-0.5 text-[9px] font-bold text-orange-400 bg-orange-500/15 px-1.5 py-0.5 rounded shrink-0">
+              <PackageCheck size={9} />{order.shipping_company?.company || 'ENVÍO'}
+            </span>
+          )}
         </div>
         <Badge variant={statusBadgeVariant[order.status] || 'default'} size="sm">
           {statusCfg.label}
         </Badge>
       </div>
 
-      {/* Order number + sector */}
+      {/* Phone + sector */}
       <div className="flex items-center gap-1.5 text-xs text-bs-text-muted mb-1">
-        <span>#{order.order_number}</span>
+        <span>{order.customer?.phone}</span>
         {order.customer?.sector && (
           <>
             <span>·</span>

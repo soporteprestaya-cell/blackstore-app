@@ -12,8 +12,8 @@ import { ORDER_STATUS_CONFIG, formatRD, formatDate, cn } from '@/lib/utils';
 import {
   ArrowLeft, MapPin, Phone, Package, Truck,
   CheckCircle, Navigation, DollarSign, Repeat, AlertTriangle,
-  MessageSquare, Star, ClipboardCheck, MapPinned, Clock,
-  PhoneCall, Check, X, Bus,
+  MessageSquare, Star, ClipboardCheck, MapPinned,
+  Check, X, Bus,
 } from 'lucide-react';
 
 export default function DeliveryOrderDetailPage() {
@@ -34,8 +34,6 @@ export default function DeliveryOrderDetailPage() {
 
   const [reminderChecklist, setReminderChecklist] = useState({
     confirmed_address: false,
-    checked_hours: false,
-    estimated_arrival: false,
   });
 
   const [itemSelections, setItemSelections] = useState<Record<string, 'kept' | 'returned' | null>>(() => {
@@ -121,8 +119,8 @@ export default function DeliveryOrderDetailPage() {
         user_id: '1',
         type: isTransfer ? 'payment_confirmed' : 'delivery_completed',
         message: isTransfer
-          ? `🔴 URGENTE: Verificar transferencia de ${formatRD(order!.total)} — Orden #${order!.order_number} (${order!.customer?.name || ''}). Delivery: ${user?.name || ''}`
-          : `${user?.name || 'Delivery'} entregó la orden #${order!.order_number} al cliente ${order!.customer?.name || ''}`,
+          ? `🔴 URGENTE: Verificar transferencia de ${formatRD(order!.total)} — ${order!.customer?.name || ''} (${order!.customer?.phone || ''}). Delivery: ${user?.name || ''}`
+          : `${user?.name || 'Delivery'} entregó orden de ${order!.customer?.name || ''} (${order!.customer?.phone || ''})`,
         order_id: order!.id,
         read: false,
         created_at: now,
@@ -134,7 +132,7 @@ export default function DeliveryOrderDetailPage() {
           id: `n_tryfit_${Date.now()}`,
           user_id: '2',
           type: 'delivery_completed',
-          message: `Orden #${order!.order_number} — ${returned.length} pieza(s) por recibir del delivery ${user?.name || ''}. Confirma recepción en tienda.`,
+          message: `${order!.customer?.name || 'Cliente'} — ${returned.length} pieza(s) por recibir del delivery ${user?.name || ''}. Confirma recepción en tienda.`,
           order_id: order!.id,
           read: false,
           created_at: now,
@@ -177,7 +175,7 @@ export default function DeliveryOrderDetailPage() {
           </button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-lg font-bold">#{order.order_number}</h1>
+          <h1 className="text-lg font-bold">{order.customer?.name || 'Cliente'}</h1>
           <p className="text-xs text-bs-text-muted">{formatDate(order.created_at)}</p>
         </div>
         <Badge variant={status === 'delivered' ? 'success' : 'blue'} size="md">
@@ -302,8 +300,6 @@ export default function DeliveryOrderDetailPage() {
           <div className="space-y-2.5">
             {([
               { key: 'confirmed_address' as const, icon: MapPin, label: 'Confirmar dirección exacta con el cliente' },
-              { key: 'checked_hours' as const, icon: Clock, label: 'Preguntar hasta qué hora puede recibir' },
-              { key: 'estimated_arrival' as const, icon: PhoneCall, label: 'Comunicar tiempo estimado de llegada' },
             ]).map((item) => (
               <button
                 key={item.key}

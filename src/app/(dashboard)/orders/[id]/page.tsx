@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { DEMO_USERS } from '@/lib/demo-data';
 import { useAppStore } from '@/lib/store';
@@ -19,6 +19,7 @@ import { printLabel } from '@/components/print-label';
 
 export default function OrderDetailPage() {
   const { id } = useParams();
+  const searchParams = useSearchParams();
   const { orders, teamMembers, user, addNotification } = useAppStore();
   const order = orders.find((o) => o.id === id);
   const { updateOrder } = useAppStore();
@@ -26,6 +27,14 @@ export default function OrderDetailPage() {
   const [showPayment, setShowPayment] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
   const [returnConfirmLoading, setReturnConfirmLoading] = useState<string | null>(null);
+
+  // Auto-open payment modal when arriving from push notification with ?confirm=1
+  useEffect(() => {
+    if (searchParams.get('confirm') === '1' && order && user?.role === 'admin' &&
+        order.payment_status !== 'verified' && order.status === 'delivered') {
+      setShowPayment(true);
+    }
+  }, [searchParams, order?.id]);
 
   const allUsers = [...DEMO_USERS, ...teamMembers.filter((m) => !DEMO_USERS.some((d) => d.id === m.id))];
   const deliveryUsers = allUsers.filter((u) => u.role === 'delivery' && u.is_active);
@@ -64,7 +73,7 @@ export default function OrderDetailPage() {
         id: `n_ret_${Date.now()}`,
         user_id: '1',
         type: 'delivery_completed',
-        message: `${user?.name || 'Empleado'} recibió pieza: ${item.product_name} (${item.size || 'N/A'}) — Orden #${order.order_number}`,
+        message: `${user?.name || 'Empleado'} recibió pieza: ${item.product_name} (${item.size || 'N/A'}) — ${order.customer?.name || 'Cliente'}`,
         order_id: order.id,
         read: false,
         created_at: new Date().toISOString(),
@@ -106,7 +115,7 @@ export default function OrderDetailPage() {
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-bold">#{order.order_number}</h1>
+            <h1 className="text-lg font-bold">{order.customer?.name || 'Cliente'}</h1>
             {isTryFit && (
               <span className="flex items-center gap-0.5 text-[10px] font-bold text-purple-400 bg-purple-500/15 px-2 py-0.5 rounded">
                 <Repeat size={10} />PRUEBA TALLA
@@ -199,6 +208,39 @@ export default function OrderDetailPage() {
             {order.bus_route.notes && (
               <div className="mt-2 text-xs text-bs-text-secondary italic bg-bs-surface p-2 rounded-lg">
                 {order.bus_route.notes}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Shipping Company Info */}
+      {order.delivery_method === 'shipping_company' && order.shipping_company && (
+        <Card highlight="warning">
+          <div className="flex items-center gap-2 mb-2">
+            <PackageCheck size={16} className="text-orange-400" />
+            <span className="text-xs font-semibold text-orange-400 uppercase tracking-wider">
+              Compañía de envío
+            </span>
+          </div>
+          <div className="space-y-1.5 text-sm">
+            <div className="flex justify-between">
+              <span className="text-bs-text-muted">Compañía:</span>
+              <span className="font-semibold">{order.shipping_company.company}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-bs-text-muted">Destino:</span>
+              <span className="font-semibold">{order.shipping_company.destination}</span>
+            </div>
+            {order.shipping_company.tracking_number && (
+              <div className="flex justify-between">
+                <span className="text-bs-text-muted">Tracking:</span>
+                <span className="font-semibold">{order.shipping_company.tracking_number}</span>
+              </div>
+            )}
+            {order.shipping_company.notes && (
+              <div className="mt-2 text-xs text-bs-text-secondary italic bg-bs-surface p-2 rounded-lg">
+                {order.shipping_company.notes}
               </div>
             )}
           </div>
@@ -504,7 +546,7 @@ export default function OrderDetailPage() {
                   id: `n_assign_${Date.now()}`,
                   user_id: d.id,
                   type: 'order_assigned',
-                  message: `Nueva orden #${order.order_number} asignada — Cliente: ${order.customer?.name}, ${order.customer?.sector || ''}`,
+                  message: `Nueva orden asignada — Cliente: ${order.customer?.name}, ${order.customer?.phone || ''}, ${order.customer?.sector || ''}`,
                   order_id: order.id,
                   read: false,
                   created_at: now,
@@ -534,7 +576,7 @@ export default function OrderDetailPage() {
               <XCircle size={28} className="text-bs-red" />
             </div>
             <p className="text-sm text-bs-text-secondary">
-              ¿Estás seguro de cancelar la orden <strong>#{order.order_number}</strong>?
+              ¿Estás seguro de cancelar la orden de <strong>{order.customer?.name}</strong>?
             </p>
             <p className="text-xs text-bs-text-muted mt-1">Esta acción no se puede deshacer.</p>
           </div>
@@ -610,7 +652,7 @@ export default function OrderDetailPage() {
                 id: `n_pay_del_${Date.now()}`,
                 user_id: order.assigned_delivery_id,
                 type: 'payment_confirmed',
-                message: `Pago confirmado por José — Orden #${order.order_number} (${order.customer?.name || ''}) ${formatRD(order.total)}`,
+                message: `Pago confirmado por José — ${order.customer?.name || ''} (${order.customer?.phone || ''}) ${formatRD(order.total)}`,
                 order_id: order.id,
                 read: false,
                 created_at: now,
@@ -620,7 +662,7 @@ export default function OrderDetailPage() {
               id: `n_pay_emp_${Date.now()}`,
               user_id: '2',
               type: 'payment_confirmed',
-              message: `Pago verificado — Orden #${order.order_number} (${order.customer?.name || ''}) ${formatRD(order.total)}`,
+              message: `Pago verificado — ${order.customer?.name || ''} (${order.customer?.phone || ''}) ${formatRD(order.total)}`,
               order_id: order.id,
               read: false,
               created_at: now,
@@ -629,7 +671,7 @@ export default function OrderDetailPage() {
               id: `n_pay_adm_${Date.now()}`,
               user_id: '1',
               type: 'payment_confirmed',
-              message: `Pago verificado: ${formatRD(order.total)} — Orden #${order.order_number} (${order.customer?.name || ''})`,
+              message: `Pago verificado: ${formatRD(order.total)} — ${order.customer?.name || ''} (${order.customer?.phone || ''})`,
               order_id: order.id,
               read: false,
               created_at: now,

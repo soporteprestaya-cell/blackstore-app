@@ -15,12 +15,19 @@ export type OrderType = 'standard' | 'try_fit';
 
 export type PaymentMethod = 'transfer' | 'cash' | 'prepaid';
 
-export type DeliveryMethod = 'personal' | 'bus_route';
+export type DeliveryMethod = 'personal' | 'bus_route' | 'shipping_company';
 
 export interface BusRouteInfo {
   company: string;
   route: string;
   terminal: string;
+  notes?: string;
+}
+
+export interface ShippingCompanyInfo {
+  company: string;
+  destination: string;
+  tracking_number?: string;
   notes?: string;
 }
 
@@ -102,6 +109,7 @@ export interface Order {
   priority: 'normal' | 'urgent';
   delivery_method: DeliveryMethod;
   bus_route?: BusRouteInfo;
+  shipping_company?: ShippingCompanyInfo;
   location_url?: string;
   product_photos: string[];
   package_photo?: string;

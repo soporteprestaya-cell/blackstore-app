@@ -7,9 +7,9 @@ import { DEMO_USERS } from '@/lib/demo-data';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { SECTORS, generateOrderNumber, formatRD } from '@/lib/utils';
-import { ArrowLeft, Plus, Trash2, Truck, Bus, MapPin, CheckCircle, Phone } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Truck, Bus, MapPin, CheckCircle, Phone, PackageCheck } from 'lucide-react';
 import Link from 'next/link';
-import type { Order } from '@/lib/types';
+import type { Order, DeliveryMethod } from '@/lib/types';
 
 interface ItemForm {
   product_name: string;
@@ -35,11 +35,17 @@ export default function NewOrderPage() {
   const [locationUrl, setLocationUrl] = useState('');
 
   // Envío
-  const [deliveryMethod, setDeliveryMethod] = useState<'personal' | 'bus_route'>('personal');
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('personal');
   const [busCompany, setBusCompany] = useState('');
   const [busCustomCompany, setBusCustomCompany] = useState('');
   const [busTerminal, setBusTerminal] = useState('');
   const [busNotes, setBusNotes] = useState('');
+
+  // Compañía de envío
+  const [shippingCompany, setShippingCompany] = useState('');
+  const [shippingCustomCompany, setShippingCustomCompany] = useState('');
+  const [shippingDestination, setShippingDestination] = useState('');
+  const [shippingNotes, setShippingNotes] = useState('');
 
   // Productos
   const [items, setItems] = useState<ItemForm[]>([
@@ -95,6 +101,9 @@ export default function NewOrderPage() {
 
     const now = new Date().toISOString();
     const ordId = `ord_${Date.now()}`;
+
+    const validItems = items.filter((item) => item.product_name.trim() || item.unit_price > 0);
+
     const newOrder: Order = {
       id: ordId,
       order_number: orderNumber,
@@ -112,14 +121,14 @@ export default function NewOrderPage() {
       },
       type: hasTryFit ? 'try_fit' : 'standard',
       status: selectedDeliveryId ? 'assigned' : 'new',
-      items: items.flatMap((item, i) => {
+      items: validItems.flatMap((item, i) => {
         const main = {
           id: `item_${Date.now()}_${i}`,
           order_id: ordId,
-          product_name: item.product_name,
+          product_name: item.product_name || 'Producto',
           size: item.size || undefined,
           color: item.color || undefined,
-          quantity: item.quantity,
+          quantity: item.quantity || 1,
           unit_price: item.unit_price,
           is_try_fit: !!item.extra_size,
           kept: null,
@@ -150,6 +159,11 @@ export default function NewOrderPage() {
         route: busCompany === 'Otra' ? busCustomCompany : '',
         terminal: busTerminal,
         notes: busNotes || undefined,
+      } : undefined,
+      shipping_company: deliveryMethod === 'shipping_company' ? {
+        company: shippingCompany === 'Otra' ? shippingCustomCompany : shippingCompany,
+        destination: shippingDestination,
+        notes: shippingNotes || undefined,
       } : undefined,
       product_photos: [],
       package_photo: undefined,
@@ -201,11 +215,6 @@ export default function NewOrderPage() {
           <div className="space-y-3">
             <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nombre del cliente" required />
             <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Teléfono" type="tel" required />
-            <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} placeholder="Dirección de entrega" required />
-            <select value={customerSector} onChange={(e) => setCustomerSector(e.target.value)} required>
-              <option value="">Seleccionar sector</option>
-              {SECTORS.map((s) => (<option key={s} value={s}>{s}</option>))}
-            </select>
             <div className="relative">
               <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-bs-text-muted" />
               <input value={locationUrl} onChange={(e) => setLocationUrl(e.target.value)} placeholder="Link de Google Maps (opcional)" className="w-full pl-9" />
@@ -227,7 +236,7 @@ export default function NewOrderPage() {
             {items.map((item, i) => (
               <div key={i} className="p-3 bg-bs-surface rounded-xl border border-bs-border space-y-2">
                 <div className="flex items-start gap-2">
-                  <input value={item.product_name} onChange={(e) => updateItem(i, { product_name: e.target.value })} placeholder="Nombre del producto" className="flex-1" required />
+                  <input value={item.product_name} onChange={(e) => updateItem(i, { product_name: e.target.value })} placeholder="Nombre del producto" className="flex-1" />
                   {items.length > 1 && (
                     <button type="button" onClick={() => removeItem(i)} className="p-2 text-bs-red hover:bg-red-500/10 rounded-lg"><Trash2 size={14} /></button>
                   )}
@@ -235,8 +244,8 @@ export default function NewOrderPage() {
                 <div className="grid grid-cols-4 gap-2">
                   <input value={item.size} onChange={(e) => updateItem(i, { size: e.target.value })} placeholder="Talla" />
                   <input value={item.color} onChange={(e) => updateItem(i, { color: e.target.value })} placeholder="Color" />
-                  <input type="number" value={item.quantity || ''} onChange={(e) => updateItem(i, { quantity: parseInt(e.target.value) || 0 })} placeholder="Cant." min="1" required />
-                  <input type="number" value={item.unit_price || ''} onChange={(e) => updateItem(i, { unit_price: parseFloat(e.target.value) || 0 })} placeholder="RD$" min="0" required />
+                  <input type="number" value={item.quantity || ''} onChange={(e) => updateItem(i, { quantity: parseInt(e.target.value) || 0 })} placeholder="Cant." min="1" />
+                  <input type="number" value={item.unit_price || ''} onChange={(e) => updateItem(i, { unit_price: parseFloat(e.target.value) || 0 })} placeholder="RD$" min="0" />
                 </div>
                 {!item.extra_size && item.size && (
                   <button
@@ -276,18 +285,27 @@ export default function NewOrderPage() {
           <label className="block text-xs font-semibold text-bs-text-secondary uppercase tracking-wider mb-3">
             3. Envío
           </label>
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <button type="button" onClick={() => setDeliveryMethod('personal')}
-              className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-medium transition-all ${
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <button type="button" onClick={() => { setDeliveryMethod('personal'); setSelectedDeliveryId(null); }}
+              className={`flex flex-col items-center justify-center gap-1 p-3 rounded-xl border text-xs font-medium transition-all ${
                 deliveryMethod === 'personal' ? 'border-bs-green bg-green-500/10 text-bs-green' : 'border-bs-border text-bs-text-secondary'
               }`}>
-              <Truck size={16} /> Delivery personal
+              <Truck size={16} />
+              <span>Delivery personal</span>
             </button>
-            <button type="button" onClick={() => setDeliveryMethod('bus_route')}
-              className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-medium transition-all ${
+            <button type="button" onClick={() => { setDeliveryMethod('bus_route'); setSelectedDeliveryId(null); }}
+              className={`flex flex-col items-center justify-center gap-1 p-3 rounded-xl border text-xs font-medium transition-all ${
                 deliveryMethod === 'bus_route' ? 'border-cyan-400 bg-cyan-500/10 text-cyan-400' : 'border-bs-border text-bs-text-secondary'
               }`}>
-              <Bus size={16} /> Ruta de guagua
+              <Bus size={16} />
+              <span>Ruta de guagua</span>
+            </button>
+            <button type="button" onClick={() => { setDeliveryMethod('shipping_company'); setSelectedDeliveryId(null); }}
+              className={`flex flex-col items-center justify-center gap-1 p-3 rounded-xl border text-xs font-medium transition-all ${
+                deliveryMethod === 'shipping_company' ? 'border-orange-400 bg-orange-500/10 text-orange-400' : 'border-bs-border text-bs-text-secondary'
+              }`}>
+              <PackageCheck size={16} />
+              <span>Compañía envío</span>
             </button>
           </div>
 
@@ -315,6 +333,23 @@ export default function NewOrderPage() {
             </div>
           )}
 
+          {deliveryMethod === 'shipping_company' && (
+            <div className="space-y-3 p-3 bg-orange-500/5 border border-orange-500/20 rounded-xl mb-3">
+              <select value={shippingCompany} onChange={(e) => setShippingCompany(e.target.value)} required>
+                <option value="">Seleccionar compañía</option>
+                <option value="Caribe Pack">Caribe Pack</option>
+                <option value="Metro Paq">Metro Paq</option>
+                <option value="Vimenpaq">Vimenpaq</option>
+                <option value="Otra">Otra compañía...</option>
+              </select>
+              {shippingCompany === 'Otra' && (
+                <input value={shippingCustomCompany} onChange={(e) => setShippingCustomCompany(e.target.value)} placeholder="Nombre de la compañía" required />
+              )}
+              <input value={shippingDestination} onChange={(e) => setShippingDestination(e.target.value)} placeholder="Destino de envío" required />
+              <textarea value={shippingNotes} onChange={(e) => setShippingNotes(e.target.value)} placeholder="Notas adicionales..." rows={2} className="w-full resize-none" />
+            </div>
+          )}
+
           {/* Costo de envío */}
           <div className="flex items-center justify-between p-3 bg-bs-surface rounded-xl border border-bs-border">
             <span className="text-xs text-bs-text-secondary">Costo de envío</span>
@@ -332,8 +367,8 @@ export default function NewOrderPage() {
           </div>
         </Card>
 
-        {/* 5. ASIGNAR DELIVERY */}
-        {(deliveryMethod === 'personal' || deliveryMethod === 'bus_route') && (
+        {/* 4. ASIGNAR DELIVERY — solo para delivery personal */}
+        {deliveryMethod === 'personal' && (
           <Card>
             <label className="block text-xs font-semibold text-bs-text-secondary uppercase tracking-wider mb-3">
               4. Asignar Delivery
@@ -391,16 +426,16 @@ export default function NewOrderPage() {
           </Card>
         )}
 
-        {/* 6. PAGO Y PRIORIDAD */}
+        {/* 5. PAGO Y PRIORIDAD */}
         <Card>
           <label className="block text-xs font-semibold text-bs-text-secondary uppercase tracking-wider mb-3">
             {deliveryMethod === 'personal' ? '5' : '4'}. Pago y prioridad
           </label>
           <div className="grid grid-cols-3 gap-2 mb-3">
             {[
-              { value: 'cash' as const, label: '💵 Efectivo' },
-              { value: 'transfer' as const, label: '📱 Transferencia' },
-              { value: 'prepaid' as const, label: '✅ Ya pagó' },
+              { value: 'cash' as const, label: 'Efectivo' },
+              { value: 'transfer' as const, label: 'Transferencia' },
+              { value: 'prepaid' as const, label: 'Ya pagó' },
             ].map((opt) => (
               <button key={opt.value} type="button" onClick={() => setPaymentMethod(opt.value)}
                 className={`p-2.5 rounded-xl border text-xs font-medium transition-all ${
@@ -421,12 +456,12 @@ export default function NewOrderPage() {
               className={`p-2.5 rounded-xl border text-xs transition-all ${
                 priority === 'urgent' ? 'border-bs-red bg-red-500/10 text-bs-red' : 'border-bs-border text-bs-text-secondary'
               }`}>
-              🔥 Urgente
+              Urgente
             </button>
           </div>
         </Card>
 
-        {/* 7. NOTAS */}
+        {/* 6. NOTAS */}
         <Card>
           <label className="block text-xs font-semibold text-bs-text-secondary uppercase tracking-wider mb-2">
             Notas (opcional)
@@ -438,12 +473,12 @@ export default function NewOrderPage() {
         <Card highlight="accent">
           <div className="space-y-2">
             <div className="flex justify-between text-sm text-bs-text-secondary">
-              <span>Subtotal ({items.length} artículo{items.length !== 1 ? 's' : ''})</span>
+              <span>Subtotal ({items.filter((i) => i.product_name.trim() || i.unit_price > 0).length} artículo{items.filter((i) => i.product_name.trim() || i.unit_price > 0).length !== 1 ? 's' : ''})</span>
               <span>{formatRD(subtotal)}</span>
             </div>
             {hasTryFit && (
               <div className="flex items-center gap-2 text-xs text-purple-400 bg-purple-500/5 px-2 py-1.5 rounded-lg">
-                <span>👔 {items.filter((i) => !!i.extra_size).length} con talla extra para probar — el delivery devuelve la que no elija el cliente</span>
+                <span>{items.filter((i) => !!i.extra_size).length} con talla extra para probar</span>
               </div>
             )}
             <div className="flex justify-between text-sm text-bs-text-secondary">
@@ -464,7 +499,7 @@ export default function NewOrderPage() {
         </Card>
 
         <Button type="submit" size="lg" className="w-full" loading={loading}>
-          {selectedDeliveryId ? '🚀 Crear y Asignar Orden' : 'Crear Orden'}
+          {selectedDeliveryId ? 'Crear y Asignar Orden' : 'Crear Orden'}
         </Button>
       </form>
     </div>

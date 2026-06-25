@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Package, DollarSign, Settings, LogOut, RefreshCw, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fetchAllData } from '@/lib/supabase-sync';
+import NotificationBanner from '@/components/NotificationBanner';
 
 const navItems = [
   { href: '/my-orders', icon: Package, label: 'Activos' },
@@ -17,6 +18,8 @@ const navItems = [
 export default function DeliveryLayout({ children }: { children: React.ReactNode }) {
   const { user, setUser, _hydrated, deliveryOnline, setDeliveryOnline, notifications: allNotifs, markNotificationRead } = useAppStore();
   const [showNotifs, setShowNotifs] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncDone, setSyncDone] = useState(false);
   const pathname = usePathname();
   const isOnline = user ? (deliveryOnline[user.id] ?? false) : false;
   const notifications = allNotifs.filter((n) => n.user_id === user?.id);
@@ -40,6 +43,7 @@ export default function DeliveryLayout({ children }: { children: React.ReactNode
 
   return (
     <div className="h-full flex flex-col bg-bs-bg">
+      <NotificationBanner />
       <header className="sticky top-0 z-40 bg-bs-surface/80 backdrop-blur-xl border-b border-bs-border px-4 py-3">
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
@@ -60,22 +64,47 @@ export default function DeliveryLayout({ children }: { children: React.ReactNode
           <div className="flex items-center gap-1">
             <button
               onClick={async () => {
-                const data = await fetchAllData();
-                if (data) {
-                  useAppStore.setState({
-                    teamMembers: data.teamMembers.length > 0 ? data.teamMembers : useAppStore.getState().teamMembers,
-                    orders: data.orders.length > 0 ? data.orders : useAppStore.getState().orders,
-                    commissionPayments: data.commissionPayments,
-                    paidOrderIds: data.paidOrderIds,
-                    notifications: data.notifications,
-                    deliveryOnline: data.deliveryOnline,
-                  });
+                if (syncing) return;
+                setSyncing(true);
+                setSyncDone(false);
+                try {
+                  if ('serviceWorker' in navigator) {
+                    const reg = await navigator.serviceWorker.getRegistration();
+                    if (reg) {
+                      if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+                      await reg.update();
+                    }
+                    await caches.keys().then((k) => Promise.all(k.map((n) => caches.delete(n))));
+                  }
+                  const data = await fetchAllData();
+                  if (data) {
+                    useAppStore.setState({
+                      teamMembers: data.teamMembers.length > 0 ? data.teamMembers : useAppStore.getState().teamMembers,
+                      orders: data.orders.length > 0 ? data.orders : useAppStore.getState().orders,
+                      commissionPayments: data.commissionPayments,
+                      paidOrderIds: data.paidOrderIds,
+                      notifications: data.notifications,
+                      deliveryOnline: data.deliveryOnline,
+                    });
+                  }
+                  setSyncDone(true);
+                  setTimeout(() => setSyncDone(false), 2000);
+                } catch (e) {
+                  console.error('Sync error:', e);
+                } finally {
+                  setSyncing(false);
                 }
               }}
-              className="p-2 hover:bg-bs-card rounded-xl transition-colors"
-              title="Actualizar"
+              className={cn(
+                'p-2 rounded-xl transition-colors',
+                syncDone ? 'bg-green-500/20' : 'hover:bg-bs-card'
+              )}
+              title="Actualizar datos y app"
             >
-              <RefreshCw size={16} className="text-bs-text-secondary" />
+              <RefreshCw size={16} className={cn(
+                syncing && 'animate-spin',
+                syncDone ? 'text-bs-green' : 'text-bs-text-secondary'
+              )} />
             </button>
             <button
               onClick={() => setShowNotifs(!showNotifs)}
