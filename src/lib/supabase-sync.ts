@@ -5,6 +5,9 @@ import type { Order, OrderItem, User, CommissionPayment, Notification } from './
 
 // ===== DATA MAPPING =====
 
+let _pendingWrites = 0;
+export function hasPendingWrites() { return _pendingWrites > 0; }
+
 function orderToRow(o: Order) {
   return {
     id: o.id,
@@ -34,7 +37,7 @@ function orderToRow(o: Order) {
     shipping_company_notes: o.shipping_company?.notes || null,
     product_photos: o.product_photos || [],
     package_photo: o.package_photo || null,
-    created_by: o.created_by,
+    created_by: o.created_by || null,
     assigned_delivery_id: o.assigned_delivery_id || null,
     created_at: o.created_at,
     updated_at: o.updated_at,
@@ -183,36 +186,50 @@ export async function fetchAllData() {
 
 export async function syncAddOrder(order: Order) {
   if (!isSupabaseConfigured) return;
-  const row = orderToRow(order);
-  const { error } = await supabase.from('orders').upsert(row);
-  if (error) {
-    console.error('syncAddOrder error:', error.message, error.details);
-    return;
-  }
-  if (order.items.length > 0) {
-    const { error: itemErr } = await supabase.from('order_items').upsert(order.items.map(itemToRow));
-    if (itemErr) console.error('syncAddOrder items error:', itemErr.message);
+  _pendingWrites++;
+  try {
+    const row = orderToRow(order);
+    const { error } = await supabase.from('orders').upsert(row);
+    if (error) {
+      console.error('SYNC ERROR syncAddOrder:', error.message, error.details, error.hint, JSON.stringify(row));
+      alert('Error guardando orden: ' + error.message);
+      return;
+    }
+    if (order.items.length > 0) {
+      const { error: itemErr } = await supabase.from('order_items').upsert(order.items.map(itemToRow));
+      if (itemErr) console.error('SYNC ERROR syncAddOrder items:', itemErr.message);
+    }
+  } finally {
+    _pendingWrites--;
   }
 }
 
 export async function syncUpdateOrder(id: string, updates: Partial<Order>) {
   if (!isSupabaseConfigured) return;
-  const row: Record<string, any> = { updated_at: new Date().toISOString() };
-  if (updates.status !== undefined) row.status = updates.status;
-  if (updates.payment_status !== undefined) row.payment_status = updates.payment_status;
-  if (updates.assigned_delivery_id !== undefined) row.assigned_delivery_id = updates.assigned_delivery_id;
-  if (updates.package_photo !== undefined) row.package_photo = updates.package_photo;
-  if ((updates as any).payment_photo !== undefined) row.payment_photo = (updates as any).payment_photo;
-  if (updates.notes !== undefined) row.notes = updates.notes;
-  if (updates.delivery_fee !== undefined) row.delivery_fee = updates.delivery_fee;
-  if (updates.total !== undefined) row.total = updates.total;
-  if (updates.payment_method !== undefined) row.payment_method = updates.payment_method;
-  if (updates.priority !== undefined) row.priority = updates.priority;
-  const { error } = await supabase.from('orders').update(row).eq('id', id);
-  if (error) console.error('syncUpdateOrder error:', error.message, error.details);
-  if (updates.items) {
-    const { error: itemErr } = await supabase.from('order_items').upsert(updates.items.map(itemToRow));
-    if (itemErr) console.error('syncUpdateOrder items error:', itemErr.message);
+  _pendingWrites++;
+  try {
+    const row: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (updates.status !== undefined) row.status = updates.status;
+    if (updates.payment_status !== undefined) row.payment_status = updates.payment_status;
+    if (updates.assigned_delivery_id !== undefined) row.assigned_delivery_id = updates.assigned_delivery_id || null;
+    if (updates.package_photo !== undefined) row.package_photo = updates.package_photo;
+    if ((updates as any).payment_photo !== undefined) row.payment_photo = (updates as any).payment_photo;
+    if (updates.notes !== undefined) row.notes = updates.notes;
+    if (updates.delivery_fee !== undefined) row.delivery_fee = updates.delivery_fee;
+    if (updates.total !== undefined) row.total = updates.total;
+    if (updates.payment_method !== undefined) row.payment_method = updates.payment_method;
+    if (updates.priority !== undefined) row.priority = updates.priority;
+    const { error } = await supabase.from('orders').update(row).eq('id', id);
+    if (error) {
+      console.error('SYNC ERROR syncUpdateOrder:', error.message, error.details);
+      alert('Error actualizando orden: ' + error.message);
+    }
+    if (updates.items) {
+      const { error: itemErr } = await supabase.from('order_items').upsert(updates.items.map(itemToRow));
+      if (itemErr) console.error('SYNC ERROR syncUpdateOrder items:', itemErr.message);
+    }
+  } finally {
+    _pendingWrites--;
   }
 }
 

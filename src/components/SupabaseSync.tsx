@@ -2,16 +2,16 @@
 
 import { useEffect, useRef } from 'react';
 import { useAppStore, getLastLocalWrite } from '@/lib/store';
-import { fetchAllData, subscribeToChanges, syncAddTeamMember } from '@/lib/supabase-sync';
+import { fetchAllData, subscribeToChanges, syncAddTeamMember, hasPendingWrites } from '@/lib/supabase-sync';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { DEMO_USERS } from '@/lib/demo-data';
 import { subscribeToPush, revalidatePushSubscription } from '@/lib/push-notifications';
 import type { Notification as AppNotification } from '@/lib/types';
 
 const POLL_INTERVAL = 5000;
-const WRITE_COOLDOWN = 3000;
+const WRITE_COOLDOWN = 5000;
 const PUSH_REVALIDATION_INTERVAL = 15 * 60 * 1000;
-const DATA_VERSION = 2;
+const DATA_VERSION = 3;
 
 function checkDataVersion() {
   const stored = localStorage.getItem('blackstore-data-version');
@@ -110,6 +110,7 @@ function checkNewNotifications(
 
 async function doSync() {
   if (Date.now() - getLastLocalWrite() < WRITE_COOLDOWN) return;
+  if (hasPendingWrites()) return;
 
   try {
     const data = await fetchAllData();
