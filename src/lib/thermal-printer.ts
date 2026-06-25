@@ -76,16 +76,14 @@ export function buildLabelData(order: Order): Uint8Array {
 
   return concat(
     ESCPOS.init(),
-
-    // Brand header
     ESCPOS.alignCenter(),
+
     ESCPOS.bold(true),
     encode('BLACKSTORE RD\n'),
     ESCPOS.bold(false),
     ESCPOS.separator('-', W),
 
-    // Customer info — compact, no labels
-    ESCPOS.alignLeft(),
+    ESCPOS.feed(1),
     ESCPOS.bold(true),
     encode(`${order.customer?.name || '---'}\n`),
     ESCPOS.bold(false),
@@ -93,16 +91,9 @@ export function buildLabelData(order: Order): Uint8Array {
     encode(`${destination}\n`),
     ...(mapsLink ? [encode(`${mapsLink}\n`)] : []),
     encode('Tienda: 8295798847\n'),
+    ESCPOS.feed(1),
+
     ESCPOS.separator('-', W),
-
-    // Total
-    ESCPOS.alignCenter(),
-    ESCPOS.bold(true),
-    ESCPOS.doubleSize(true),
-    encode(`${formatRD(order.total)}\n`),
-    ESCPOS.doubleSize(false),
-    ESCPOS.bold(false),
-
     ESCPOS.feed(3),
     ESCPOS.cut(),
   );

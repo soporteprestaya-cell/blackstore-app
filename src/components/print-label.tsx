@@ -145,7 +145,8 @@ function printLabelBrowser(order: Order) {
   }
   .info {
     font-size: 13px;
-    line-height: 1.6;
+    line-height: 1.8;
+    text-align: center;
   }
   .info .name {
     font-size: 15px;
@@ -167,14 +168,6 @@ function printLabelBrowser(order: Order) {
     color: #333;
     margin-top: 4px;
   }
-  .total-row {
-    padding: 6px 0 4px;
-    font-size: 20px;
-    font-weight: 900;
-    text-align: center;
-    border-top: 1px solid #ccc;
-    margin-top: 6px;
-  }
   @media print {
     body { padding: 0; max-width: none; }
     .no-print { display: none !important; }
@@ -191,10 +184,6 @@ function printLabelBrowser(order: Order) {
     <div class="dest">${destination}</div>
     ${mapsLink ? `<div class="maps">${mapsLink}</div>` : ''}
     <div class="store-phone">Tienda: 8295798847</div>
-  </div>
-
-  <div class="total-row">
-    ${formatRD(order.total)}
   </div>
 </div>
 
