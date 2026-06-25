@@ -3,13 +3,63 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import type { Order, OrderItem, User, CommissionPayment, Notification } from './types';
 
-// ===== DATA MAPPING =====
-
 let _pendingWrites = 0;
 export function hasPendingWrites() { return _pendingWrites > 0; }
 
-let _hasShippingColumns = true;
-let _hasPaymentPhoto = true;
+let _extraColumns: Set<string> | null = null;
+
+async function detectColumns() {
+  if (_extraColumns !== null) return;
+  _extraColumns = new Set();
+  try {
+    const { data } = await supabase.from('orders').select('*').limit(0);
+    if (data !== null) {
+      const { data: probe } = await supabase
+        .from('orders')
+        .select('shipping_company_name,payment_photo,package_photo')
+        .limit(0);
+      if (probe !== null) {
+        _extraColumns.add('shipping_company_name');
+        _extraColumns.add('shipping_company_destination');
+        _extraColumns.add('shipping_company_tracking');
+        _extraColumns.add('shipping_company_notes');
+        _extraColumns.add('payment_photo');
+        _extraColumns.add('package_photo');
+      }
+    }
+  } catch {
+    // columns don't exist
+  }
+  if (!_extraColumns.has('shipping_company_name')) {
+    try {
+      const { error } = await supabase.from('orders').select('shipping_company_name').limit(0);
+      if (!error) {
+        _extraColumns.add('shipping_company_name');
+        _extraColumns.add('shipping_company_destination');
+        _extraColumns.add('shipping_company_tracking');
+        _extraColumns.add('shipping_company_notes');
+      }
+    } catch { /* */ }
+  }
+  if (!_extraColumns.has('payment_photo')) {
+    try {
+      const { error } = await supabase.from('orders').select('payment_photo').limit(0);
+      if (!error) {
+        _extraColumns.add('payment_photo');
+      }
+    } catch { /* */ }
+    try {
+      const { error } = await supabase.from('orders').select('package_photo').limit(0);
+      if (!error) {
+        _extraColumns.add('package_photo');
+      }
+    } catch { /* */ }
+  }
+}
+
+function has(col: string): boolean {
+  return _extraColumns?.has(col) ?? false;
+}
 
 function orderToRow(o: Order) {
   const row: Record<string, any> = {
@@ -40,14 +90,16 @@ function orderToRow(o: Order) {
     created_at: o.created_at,
     updated_at: o.updated_at,
   };
-  if (_hasShippingColumns) {
+  if (has('shipping_company_name')) {
     row.shipping_company_name = o.shipping_company?.company || null;
     row.shipping_company_destination = o.shipping_company?.destination || null;
     row.shipping_company_tracking = o.shipping_company?.tracking_number || null;
     row.shipping_company_notes = o.shipping_company?.notes || null;
   }
-  if (_hasPaymentPhoto) {
+  if (has('package_photo')) {
     row.package_photo = o.package_photo || null;
+  }
+  if (has('payment_photo')) {
     row.payment_photo = (o as any).payment_photo || null;
   }
   return row;
@@ -140,6 +192,8 @@ function rowToItem(row: any): OrderItem {
 export async function fetchAllData() {
   if (!isSupabaseConfigured) return null;
 
+  await detectColumns();
+
   const [membersRes, ordersRes, itemsRes, paymentsRes, notifRes, onlineRes] = await Promise.all([
     supabase.from('team_members').select('*').order('created_at'),
     supabase.from('orders').select('*').order('created_at', { ascending: false }),
@@ -197,19 +251,9 @@ export async function syncAddOrder(order: Order) {
   if (!isSupabaseConfigured) return;
   _pendingWrites++;
   try {
-    let row = orderToRow(order);
-    let { error } = await supabase.from('orders').upsert(row);
-    if (error && error.message.includes('column')) {
-      if (error.message.includes('shipping_company')) {
-        _hasShippingColumns = false;
-      }
-      if (error.message.includes('payment_photo') || error.message.includes('package_photo')) {
-        _hasPaymentPhoto = false;
-      }
-      row = orderToRow(order);
-      const retry = await supabase.from('orders').upsert(row);
-      error = retry.error;
-    }
+    await detectColumns();
+    const row = orderToRow(order);
+    const { error } = await supabase.from('orders').upsert(row);
     if (error) {
       console.error('SYNC ERROR syncAddOrder:', error.message, error.details);
       return;
@@ -227,21 +271,21 @@ export async function syncUpdateOrder(id: string, updates: Partial<Order>) {
   if (!isSupabaseConfigured) return;
   _pendingWrites++;
   try {
+    await detectColumns();
     const row: Record<string, any> = { updated_at: new Date().toISOString() };
     if (updates.status !== undefined) row.status = updates.status;
     if (updates.payment_status !== undefined) row.payment_status = updates.payment_status;
     if (updates.assigned_delivery_id !== undefined) row.assigned_delivery_id = updates.assigned_delivery_id || null;
-    if (updates.package_photo !== undefined) row.package_photo = updates.package_photo;
-    if ((updates as any).payment_photo !== undefined) row.payment_photo = (updates as any).payment_photo;
     if (updates.notes !== undefined) row.notes = updates.notes;
     if (updates.delivery_fee !== undefined) row.delivery_fee = updates.delivery_fee;
     if (updates.total !== undefined) row.total = updates.total;
     if (updates.payment_method !== undefined) row.payment_method = updates.payment_method;
     if (updates.priority !== undefined) row.priority = updates.priority;
+    if (has('package_photo') && updates.package_photo !== undefined) row.package_photo = updates.package_photo;
+    if (has('payment_photo') && (updates as any).payment_photo !== undefined) row.payment_photo = (updates as any).payment_photo;
     const { error } = await supabase.from('orders').update(row).eq('id', id);
     if (error) {
       console.error('SYNC ERROR syncUpdateOrder:', error.message, error.details);
-      alert('Error actualizando orden: ' + error.message);
     }
     if (updates.items) {
       const { error: itemErr } = await supabase.from('order_items').upsert(updates.items.map(itemToRow));
