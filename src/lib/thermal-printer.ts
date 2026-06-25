@@ -76,12 +76,7 @@ export function buildLabelData(order: Order): Uint8Array {
     ESCPOS.init(),
     ESCPOS.alignCenter(),
 
-    ESCPOS.bold(true),
-    encode('BLACKSTORE RD\n'),
-    ESCPOS.bold(false),
-    ESCPOS.separator('-', W),
-
-    ESCPOS.feed(1),
+    ESCPOS.feed(2),
     ESCPOS.bold(true),
     encode(`${order.customer?.name || '---'}\n`),
     ESCPOS.bold(false),
@@ -89,8 +84,8 @@ export function buildLabelData(order: Order): Uint8Array {
     encode(`${destination}\n`),
     encode('Tienda: 8295798847\n'),
     ESCPOS.feed(1),
-
     ESCPOS.separator('-', W),
+    encode('Gracias por su compra\n'),
     ESCPOS.feed(3),
     ESCPOS.cut(),
   );

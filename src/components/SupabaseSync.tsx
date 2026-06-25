@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useAppStore, getLastLocalWrite } from '@/lib/store';
-import { fetchAllData, subscribeToChanges, syncAddTeamMember, syncAddOrder, syncAddCommissionPayment, syncAddNotification } from '@/lib/supabase-sync';
+import { fetchAllData, subscribeToChanges, syncAddTeamMember } from '@/lib/supabase-sync';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { DEMO_USERS } from '@/lib/demo-data';
 import { subscribeToPush, revalidatePushSubscription } from '@/lib/push-notifications';
@@ -11,6 +11,18 @@ import type { Notification as AppNotification } from '@/lib/types';
 const POLL_INTERVAL = 5000;
 const WRITE_COOLDOWN = 3000;
 const PUSH_REVALIDATION_INTERVAL = 15 * 60 * 1000;
+const DATA_VERSION = 2;
+
+function checkDataVersion() {
+  const stored = localStorage.getItem('blackstore-data-version');
+  if (stored !== String(DATA_VERSION)) {
+    localStorage.removeItem('blackstore-storage');
+    localStorage.setItem('blackstore-data-version', String(DATA_VERSION));
+    window.location.reload();
+    return false;
+  }
+  return true;
+}
 
 function playUrgentSound() {
   try {
@@ -113,8 +125,8 @@ async function doSync() {
     );
 
     useAppStore.setState({
-      teamMembers: data.teamMembers.length > 0 ? data.teamMembers : current.teamMembers,
-      orders: data.orders.length > 0 ? data.orders : current.orders,
+      teamMembers: data.teamMembers,
+      orders: data.orders,
       commissionPayments: data.commissionPayments,
       paidOrderIds: data.paidOrderIds,
       notifications: data.notifications,
@@ -130,6 +142,7 @@ export default function SupabaseSync() {
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
+    if (!checkDataVersion()) return;
 
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -141,28 +154,13 @@ export default function SupabaseSync() {
       const data = await fetchAllData();
       if (!data) return;
 
-      const local = useAppStore.getState();
-
-      if (data.orders.length === 0 && local.orders.length > 0) {
-        for (const o of local.orders) await syncAddOrder(o);
-      }
-      if (data.notifications.length === 0 && local.notifications.length > 0) {
-        for (const n of local.notifications) await syncAddNotification(n);
-      }
-      if (data.commissionPayments.length === 0 && local.commissionPayments.length > 0) {
-        for (const p of local.commissionPayments) await syncAddCommissionPayment(p);
-      }
-
-      const fresh = await fetchAllData();
-      if (!fresh) return;
-
       useAppStore.setState({
-        teamMembers: fresh.teamMembers.length > 0 ? fresh.teamMembers : local.teamMembers,
-        orders: fresh.orders.length > 0 ? fresh.orders : local.orders,
-        commissionPayments: fresh.commissionPayments.length > 0 ? fresh.commissionPayments : local.commissionPayments,
-        paidOrderIds: fresh.paidOrderIds.length > 0 ? fresh.paidOrderIds : local.paidOrderIds,
-        notifications: fresh.notifications.length > 0 ? fresh.notifications : local.notifications,
-        deliveryOnline: Object.keys(fresh.deliveryOnline).length > 0 ? fresh.deliveryOnline : local.deliveryOnline,
+        teamMembers: data.teamMembers,
+        orders: data.orders,
+        commissionPayments: data.commissionPayments,
+        paidOrderIds: data.paidOrderIds,
+        notifications: data.notifications,
+        deliveryOnline: data.deliveryOnline,
       });
     }
 
@@ -176,17 +174,14 @@ export default function SupabaseSync() {
       });
     }
 
-    // Realtime subscription with automatic reconnection
     let debounceTimer: ReturnType<typeof setTimeout>;
     let unsubscribe = subscribeToChanges(() => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(doSync, 100);
     });
 
-    // Polling fallback
     const pollInterval = setInterval(doSync, POLL_INTERVAL);
 
-    // Re-validate push subscription periodically
     const pushRevalidationInterval = setInterval(() => {
       const currentUser = useAppStore.getState().user;
       if (currentUser?.id) {
@@ -205,7 +200,6 @@ export default function SupabaseSync() {
     }
     document.addEventListener('visibilitychange', handleVisibility);
 
-    // Reconnect realtime on network recovery
     function handleOnline() {
       unsubscribe();
       unsubscribe = subscribeToChanges(() => {
