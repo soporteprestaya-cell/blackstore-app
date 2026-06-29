@@ -61,6 +61,26 @@ export const useAppStore = create<AppState>()(
         set((s) => ({
           orders: s.orders.map((o) => (o.id === id ? { ...o, ...updates } : o)),
         }));
+        // Notify admin+employees when delivery uploads shipping receipt photo
+        if (updates.shipping_receipt_photo) {
+          const currentState = useAppStore.getState();
+          const order = currentState.orders.find((o) => o.id === id);
+          const recipients = currentState.teamMembers.filter(
+            (m) => (m.role === 'admin' || m.role === 'employee') && m.is_active,
+          );
+          const now = new Date().toISOString();
+          recipients.forEach((member) => {
+            currentState.addNotification({
+              id: `n_receipt_${Date.now()}_${member.id}`,
+              user_id: member.id,
+              type: 'receipt_uploaded' as const,
+              message: `📦 ${order?.assigned_delivery?.name ?? 'Delivery'} subió recibo de envío — #${order?.order_number} (${order?.customer?.name ?? 'Cliente'})`,
+              order_id: id,
+              read: false,
+              created_at: now,
+            });
+          });
+        }
         syncUpdateOrder(id, updates);
       },
       commissionPayments: [],
@@ -107,7 +127,7 @@ export const useAppStore = create<AppState>()(
         const targetUserId = n.user_id || undefined;
         const baseUrl = n.order_id ? `/orders/${n.order_id}` : '/';
         const pushUrl = isTransferVerify ? `${baseUrl}?confirm=1` : baseUrl;
-        const pushTitle = isUrgent ? 'BlackStore RD — URGENTE' : 'BlackStore RD';
+        const pushTitle = isUrgent ? 'BlackStore RD â URGENTE' : 'BlackStore RD';
 
         if (targetUserId) {
           sendPushToUser(targetUserId, n.message, { title: pushTitle, url: pushUrl });
@@ -166,8 +186,17 @@ if (typeof window !== 'undefined') {
   channel?.addEventListener('message', (e) => {
     if (e.data?.type === 'STATE_SYNC') {
       isSyncUpdate = true;
-      useAppStore.setState(e.data.state);
+      // MERGE orders: preserve existing orders not in the incoming state
+      const currentOrders = useAppStore.getState().orders;
+      const incomingOrders: import('./types').Order[] = e.data.state?.orders ?? [];
+      const incomingIds = new Set(incomingOrders.map((o: import('./types').Order) => o.id));
+      const missingOrders = currentOrders.filter((o) => !incomingIds.has(o.id));
+      const mergedOrders = [
+        ...incomingOrders,
+        ...missingOrders,
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      useAppStore.setState({ ...e.data.state, orders: mergedOrders });
       isSyncUpdate = false;
     }
   });
-}
+            }
