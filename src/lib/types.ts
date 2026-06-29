@@ -47,7 +47,7 @@ export interface User {
 export interface Notification {
   id: string;
   user_id?: string;
-  type: 'delivery_completed' | 'payment_confirmed' | 'order_assigned';
+  type: 'delivery_completed' | 'payment_confirmed' | 'order_assigned' | 'receipt_uploaded';
   message: string;
   order_id?: string;
   read: boolean;
