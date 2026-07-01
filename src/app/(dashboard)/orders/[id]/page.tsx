@@ -14,7 +14,7 @@ import { sendPushToUser } from '@/lib/push-notifications';
 import {
   ArrowLeft, User, MapPin, Phone, Clock, Truck, CheckCircle, XCircle,
   DollarSign, Package, Repeat, AlertTriangle, Star, MessageSquare,
-  PackageCheck, Bus, Printer,
+  PackageCheck, Bus, Printer, Receipt,
 } from 'lucide-react';
 import { printLabel } from '@/components/print-label';
 
@@ -245,6 +245,33 @@ export default function OrderDetailPage() {
               </div>
             )}
           </div>
+        </Card>
+      )}
+
+      {/* Shipping Receipt Photo */}
+      {(order.delivery_method === 'bus_route' || order.delivery_method === 'shipping_company') && (
+        <Card highlight={order.shipping_receipt_photo ? 'success' : 'warning'}>
+          <div className="flex items-center gap-2 mb-2">
+            <Receipt size={16} className={order.shipping_receipt_photo ? 'text-bs-green' : 'text-bs-orange'} />
+            <span className={`text-xs font-semibold uppercase tracking-wider ${order.shipping_receipt_photo ? 'text-bs-green' : 'text-bs-orange'}`}>
+              Recibo de envio
+            </span>
+          </div>
+          {order.shipping_receipt_photo ? (
+            <>
+              <div className="rounded-xl overflow-hidden border border-bs-border mb-2">
+                <img src={order.shipping_receipt_photo} alt="Recibo de envio" className="w-full max-h-64 object-contain bg-black/50" />
+              </div>
+              <p className="text-[11px] text-bs-text-muted text-center">
+                Envia este recibo al cliente para que pueda recibir su paquete
+              </p>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/20 rounded-xl">
+              <AlertTriangle size={13} className="text-bs-orange shrink-0" />
+              <span className="text-[11px] text-bs-orange">El delivery aun no ha subido el recibo de envio</span>
+            </div>
+          )}
         </Card>
       )}
 

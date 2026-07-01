@@ -178,7 +178,7 @@ export default function NewOrderPage() {
     addOrder(newOrder);
 
     if (selectedDeliveryId && selectedDelivery) {
-      const assignMsg = `Nueva orden #${orderNumber} asignada — Cliente: ${customerName}, ${customerSector}`;
+      const assignMsg = `Nueva orden #${orderNumber} asignada — Cliente: ${customerName}${customerSector ? `, ${customerSector}` : ''}`;
       addNotification({
         id: `n_${Date.now()}`,
         user_id: selectedDeliveryId,
@@ -189,6 +189,16 @@ export default function NewOrderPage() {
         created_at: now,
       });
       sendPushToUser(selectedDeliveryId, assignMsg, { url: `/my-orders/${ordId}` });
+    } else if (deliveryMethod === 'personal') {
+      const openMsg = `Nueva orden disponible — ${customerName}${customerSector ? `, ${customerSector}` : ''} — ${formatRD(total)}`;
+      addNotification({
+        id: `n_open_${Date.now()}`,
+        type: 'order_assigned',
+        message: openMsg,
+        order_id: ordId,
+        read: false,
+        created_at: now,
+      });
     }
 
     await new Promise((r) => setTimeout(r, 400));
@@ -316,6 +326,8 @@ export default function NewOrderPage() {
             <div className="space-y-3 p-3 bg-cyan-500/5 border border-cyan-500/20 rounded-xl mb-3">
               <select value={busCompany} onChange={(e) => setBusCompany(e.target.value)} required>
                 <option value="">Línea de transporte</option>
+                <option value="Caribe Tours">Caribe Tours</option>
+                <option value="Metro Tours">Metro Tours</option>
                 <option value="Expreso Vegano">Expreso Vegano</option>
                 <option value="Expreso Nagua">Expreso Nagua</option>
                 <option value="Transporte Espinal">Transporte Espinal</option>

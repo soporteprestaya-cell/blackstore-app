@@ -9,18 +9,22 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return arr;
 }
 
-let lastSubscriptionAttempt = 0;
-const SUBSCRIPTION_COOLDOWN = 30_000;
-
 export async function subscribeToPush(userId: string): Promise<boolean> {
   try {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
-    if (!VAPID_PUBLIC_KEY) return false;
-    if (Date.now() - lastSubscriptionAttempt < SUBSCRIPTION_COOLDOWN) return true;
-    lastSubscriptionAttempt = Date.now();
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.warn('Push not supported');
+      return false;
+    }
+    if (!VAPID_PUBLIC_KEY) {
+      console.warn('VAPID key missing');
+      return false;
+    }
 
     const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return false;
+    if (permission !== 'granted') {
+      console.warn('Notification permission:', permission);
+      return false;
+    }
 
     const reg = await navigator.serviceWorker.ready;
     let subscription = await reg.pushManager.getSubscription();
@@ -40,19 +44,30 @@ export async function subscribeToPush(userId: string): Promise<boolean> {
       });
     }
 
+    const subJson = subscription.toJSON();
+    if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
+      console.error('Invalid push subscription created');
+      return false;
+    }
+
     const res = await fetch('/api/push-subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        subscription: subscription.toJSON(),
+        subscription: subJson,
         userId,
       }),
     });
 
-    return res.ok;
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('push-subscribe API error:', res.status, err);
+      return false;
+    }
+
+    return true;
   } catch (err) {
     console.error('Push subscription failed:', err);
-    lastSubscriptionAttempt = 0;
     return false;
   }
 }

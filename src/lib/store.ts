@@ -125,14 +125,14 @@ export const useAppStore = create<AppState>()(
         const isUrgent = n.message.includes('URGENTE');
         const isTransferVerify = isUrgent && n.message.includes('transferencia');
         const targetUserId = n.user_id || undefined;
-        const baseUrl = n.order_id ? `/orders/${n.order_id}` : '/';
-        const pushUrl = isTransferVerify ? `${baseUrl}?confirm=1` : baseUrl;
-        const pushTitle = isUrgent ? 'BlackStore RD â URGENTE' : 'BlackStore RD';
+        const pushTitle = isUrgent ? 'BlackStore RD — URGENTE' : 'BlackStore RD';
 
         if (targetUserId) {
+          const baseUrl = n.order_id ? `/orders/${n.order_id}` : '/';
+          const pushUrl = isTransferVerify ? `${baseUrl}?confirm=1` : baseUrl;
           sendPushToUser(targetUserId, n.message, { title: pushTitle, url: pushUrl });
         } else {
-          sendPushBroadcast(n.message, { title: pushTitle, url: pushUrl });
+          sendPushBroadcast(n.message, { title: pushTitle, url: '/my-orders' });
         }
       },
       markNotificationRead: (id) => {

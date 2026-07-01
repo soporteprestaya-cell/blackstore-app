@@ -13,7 +13,7 @@ import {
   ArrowLeft, MapPin, Phone, Package, Truck,
   CheckCircle, Navigation, DollarSign, Repeat, AlertTriangle,
   MessageSquare, Star, ClipboardCheck, MapPinned,
-  Check, X, Bus,
+  Check, X, Bus, Receipt, PackageCheck, Upload,
 } from 'lucide-react';
 
 export default function DeliveryOrderDetailPage() {
@@ -31,6 +31,8 @@ export default function DeliveryOrderDetailPage() {
   const [driverPhone, setDriverPhone] = useState('');
   const [busPlate, setBusPlate] = useState('');
   const [busFicha, setBusFicha] = useState('');
+  const [shippingReceiptPhoto, setShippingReceiptPhoto] = useState<string | undefined>(order?.shipping_receipt_photo);
+  const [receiptSaving, setReceiptSaving] = useState(false);
 
   const [reminderChecklist, setReminderChecklist] = useState({
     confirmed_address: false,
@@ -76,6 +78,8 @@ export default function DeliveryOrderDetailPage() {
   const effectiveTotal = order.total;
 
   const isBusRoute = order?.delivery_method === 'bus_route';
+  const isShippingCompany = order?.delivery_method === 'shipping_company';
+  const needsReceipt = isBusRoute || isShippingCompany;
   const busDriverReady = !isBusRoute || (driverName && driverPhone && busPlate);
 
   const canConfirmDelivery = busDriverReady && (
@@ -251,6 +255,100 @@ export default function DeliveryOrderDetailPage() {
                 {order.bus_route.notes}
               </div>
             )}
+          </div>
+        </Card>
+      )}
+
+      {/* Shipping Company Info */}
+      {isShippingCompany && order.shipping_company && (
+        <Card highlight="warning">
+          <div className="flex items-center gap-2 mb-2">
+            <PackageCheck size={16} className="text-orange-400" />
+            <span className="text-xs font-bold text-orange-400 uppercase tracking-wider">
+              Compania de envio
+            </span>
+          </div>
+          <div className="space-y-1.5 text-sm">
+            <div className="flex justify-between">
+              <span className="text-bs-text-muted">Compania:</span>
+              <span className="font-bold">{order.shipping_company.company}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-bs-text-muted">Destino:</span>
+              <span className="font-bold">{order.shipping_company.destination}</span>
+            </div>
+            {order.shipping_company.tracking_number && (
+              <div className="flex justify-between">
+                <span className="text-bs-text-muted">Tracking:</span>
+                <span className="font-bold">{order.shipping_company.tracking_number}</span>
+              </div>
+            )}
+            {order.shipping_company.notes && (
+              <div className="mt-2 text-xs text-bs-text-secondary italic bg-bs-surface p-2 rounded-lg">
+                {order.shipping_company.notes}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Receipt Upload — for bus route and shipping company orders */}
+      {needsReceipt && status !== 'delivered' && (
+        <Card highlight={shippingReceiptPhoto ? 'success' : 'accent'}>
+          <div className="flex items-center gap-2 mb-2">
+            <Receipt size={16} className={shippingReceiptPhoto ? 'text-bs-green' : 'text-bs-accent'} />
+            <span className={`text-xs font-bold uppercase tracking-wider ${shippingReceiptPhoto ? 'text-bs-green' : 'text-bs-accent'}`}>
+              Recibo de envio
+            </span>
+          </div>
+          <p className="text-[11px] text-bs-text-secondary mb-3">
+            Sube la foto del recibo que te entregaron al enviar el paquete. Este recibo se enviara al cliente como prueba de envio.
+          </p>
+          <PhotoCapture
+            label="Foto del recibo de envio"
+            required
+            value={shippingReceiptPhoto}
+            onChange={(photo) => {
+              setShippingReceiptPhoto(photo);
+              if (photo) {
+                setReceiptSaving(true);
+                updateOrder(order.id, {
+                  shipping_receipt_photo: photo,
+                  updated_at: new Date().toISOString(),
+                });
+                addNotification({
+                  id: `n_receipt_${Date.now()}`,
+                  user_id: '1',
+                  type: 'delivery_completed',
+                  message: `${user?.name || 'Delivery'} subio recibo de envio — ${order.customer?.name || 'Cliente'} (${isBusRoute ? order.bus_route?.company : order.shipping_company?.company})`,
+                  order_id: order.id,
+                  read: false,
+                  created_at: new Date().toISOString(),
+                });
+                setTimeout(() => setReceiptSaving(false), 1000);
+              }
+            }}
+          />
+          {receiptSaving && (
+            <div className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-green-500/10 rounded-xl">
+              <CheckCircle size={12} className="text-bs-green" />
+              <span className="text-[11px] text-bs-green font-medium">Recibo guardado</span>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Receipt view — after delivery */}
+      {needsReceipt && status === 'delivered' && shippingReceiptPhoto && (
+        <Card highlight="success">
+          <div className="flex items-center gap-2 mb-2">
+            <Receipt size={16} className="text-bs-green" />
+            <span className="text-xs font-bold text-bs-green uppercase tracking-wider">
+              Recibo de envio
+            </span>
+          </div>
+          <div className="rounded-xl overflow-hidden border border-bs-border">
+            <img src={shippingReceiptPhoto} alt="Recibo de envio" className="w-full max-h-48 object-contain bg-black/50" />
           </div>
         </Card>
       )}

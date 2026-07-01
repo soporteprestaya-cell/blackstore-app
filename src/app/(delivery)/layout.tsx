@@ -22,7 +22,7 @@ export default function DeliveryLayout({ children }: { children: React.ReactNode
   const [syncDone, setSyncDone] = useState(false);
   const pathname = usePathname();
   const isOnline = user ? (deliveryOnline[user.id] ?? false) : false;
-  const notifications = allNotifs.filter((n) => n.user_id === user?.id);
+  const notifications = allNotifs.filter((n) => !n.user_id || n.user_id === user?.id);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   useEffect(() => {

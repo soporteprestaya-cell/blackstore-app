@@ -2,16 +2,18 @@
 
 import { useEffect, useRef } from 'react';
 import { useAppStore, getLastLocalWrite } from '@/lib/store';
-import { fetchAllData, subscribeToChanges, syncAddTeamMember, hasPendingWrites } from '@/lib/supabase-sync';
+import { fetchAllData, subscribeToChanges, syncAddTeamMember, hasPendingWrites, retrySyncLocalOrders } from '@/lib/supabase-sync';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { DEMO_USERS } from '@/lib/demo-data';
 import { subscribeToPush, revalidatePushSubscription } from '@/lib/push-notifications';
 import type { Notification as AppNotification } from '@/lib/types';
 
 const POLL_INTERVAL = 5000;
-const WRITE_COOLDOWN = 5000;
+const WRITE_COOLDOWN = 8000;
 const PUSH_REVALIDATION_INTERVAL = 15 * 60 * 1000;
-const DATA_VERSION = 4;
+const DATA_VERSION = 5;
+
+let _initialSyncDone = false;
 
 function checkDataVersion() {
   const stored = localStorage.getItem('blackstore-data-version');
@@ -120,6 +122,7 @@ function checkNewNotifications(
 }
 
 async function doSync() {
+  if (!_initialSyncDone) return;
   if (Date.now() - getLastLocalWrite() < WRITE_COOLDOWN) return;
   if (hasPendingWrites()) return;
 
@@ -136,14 +139,22 @@ async function doSync() {
       current.user?.role,
     );
 
+    const remoteOrderIds = new Set(data.orders.map((o) => o.id));
+    const localOnlyOrders = current.orders.filter((o) => !remoteOrderIds.has(o.id));
+    const mergedOrders = [...data.orders, ...localOnlyOrders];
+
     useAppStore.setState({
       teamMembers: data.teamMembers,
-      orders: data.orders,
+      orders: mergedOrders,
       commissionPayments: data.commissionPayments,
       paidOrderIds: data.paidOrderIds,
       notifications: data.notifications,
       deliveryOnline: data.deliveryOnline,
     });
+
+    if (localOnlyOrders.length > 0) {
+      retrySyncLocalOrders(localOnlyOrders, remoteOrderIds);
+    }
   } catch (e) {
     console.error('Sync error:', e);
   }
@@ -166,14 +177,25 @@ export default function SupabaseSync() {
       const data = await fetchAllData();
       if (!data) return;
 
+      const current = useAppStore.getState();
+      const remoteOrderIds = new Set(data.orders.map((o) => o.id));
+      const localOnlyOrders = current.orders.filter((o) => !remoteOrderIds.has(o.id));
+      const mergedOrders = [...data.orders, ...localOnlyOrders];
+
       useAppStore.setState({
         teamMembers: data.teamMembers,
-        orders: data.orders,
+        orders: mergedOrders,
         commissionPayments: data.commissionPayments,
         paidOrderIds: data.paidOrderIds,
         notifications: data.notifications,
         deliveryOnline: data.deliveryOnline,
       });
+
+      if (localOnlyOrders.length > 0) {
+        retrySyncLocalOrders(localOnlyOrders, remoteOrderIds);
+      }
+
+      _initialSyncDone = true;
     }
 
     if (!initialized.current) {

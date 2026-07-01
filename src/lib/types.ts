@@ -114,6 +114,7 @@ export interface Order {
   product_photos: string[];
   package_photo?: string;
   payment_photo?: string;
+  shipping_receipt_photo?: string;
   created_by: string;
   assigned_delivery_id?: string;
   assigned_delivery?: User;
