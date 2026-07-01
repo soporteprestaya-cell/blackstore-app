@@ -7,14 +7,18 @@ let _pendingWrites = 0;
 export function hasPendingWrites() { return _pendingWrites > 0; }
 
 let _extraColumns: Set<string> | null = null;
+let _lastDetect = 0;
+const DETECT_TTL = 60_000;
 
-async function detectColumns() {
-  if (_extraColumns !== null) return;
-  _extraColumns = new Set();
+async function detectColumns(force = false) {
+  const now = Date.now();
+  if (!force && _extraColumns !== null && now - _lastDetect < DETECT_TTL) return;
+  const prev = _extraColumns;
+  _extraColumns = new Set(prev);
+  _lastDetect = now;
   const probes: [string, string[]][] = [
+    ['bus_route_company', ['bus_route_company', 'bus_route_destination', 'bus_route_notes']],
     ['shipping_company_name', ['shipping_company_name', 'shipping_company_destination', 'shipping_company_tracking', 'shipping_company_notes']],
-    ['payment_photo', ['payment_photo']],
-    ['package_photo', ['package_photo']],
   ];
   for (const [col, cols] of probes) {
     try {
@@ -22,6 +26,12 @@ async function detectColumns() {
       if (!error) cols.forEach((c) => _extraColumns!.add(c));
     } catch { /* column doesn't exist */ }
   }
+}
+
+const _failedOrders = new Map<string, Order>();
+
+export function getFailedOrderIds(): string[] {
+  return Array.from(_failedOrders.keys());
 }
 
 function has(col: string): boolean {
@@ -48,27 +58,26 @@ function orderToRow(o: Order) {
     source: o.source,
     priority: o.priority,
     delivery_method: o.delivery_method,
-    bus_route_company: o.bus_route?.company || null,
-    bus_route_destination: o.bus_route?.route || null,
-    bus_route_notes: o.bus_route?.notes || null,
     product_photos: o.product_photos || [],
     created_by: o.created_by || null,
     assigned_delivery_id: o.assigned_delivery_id || null,
     created_at: o.created_at,
     updated_at: o.updated_at,
   };
+  if (has('bus_route_company')) {
+    row.bus_route_company = o.bus_route?.company || null;
+    row.bus_route_destination = o.bus_route?.route || null;
+    row.bus_route_notes = o.bus_route?.notes || null;
+  }
   if (has('shipping_company_name')) {
     row.shipping_company_name = o.shipping_company?.company || null;
     row.shipping_company_destination = o.shipping_company?.destination || null;
     row.shipping_company_tracking = o.shipping_company?.tracking_number || null;
     row.shipping_company_notes = o.shipping_company?.notes || null;
   }
-  if (has('package_photo')) {
-    row.package_photo = o.package_photo || null;
-  }
-  if (has('payment_photo')) {
-    row.payment_photo = o.payment_photo || null;
-  }
+  row.package_photo = o.package_photo || null;
+  row.payment_photo = o.payment_photo || null;
+  row.shipping_receipt_photo = o.shipping_receipt_photo || null;
   return row;
 }
 
@@ -76,6 +85,17 @@ function rowToOrder(row: any, items: OrderItem[], members: User[]): Order {
   const delivery = row.assigned_delivery_id
     ? members.find((m) => m.id === row.assigned_delivery_id)
     : undefined;
+
+  let deliveryMethod = row.delivery_method || 'personal';
+  let notes = row.notes || '';
+  if (notes && notes.startsWith(DM_PREFIX)) {
+    const endIdx = notes.indexOf(']]');
+    if (endIdx > 0) {
+      deliveryMethod = notes.substring(DM_PREFIX.length, endIdx);
+      notes = notes.substring(endIdx + 2) || null;
+    }
+  }
+
   return {
     id: row.id,
     order_number: row.order_number,
@@ -99,10 +119,10 @@ function rowToOrder(row: any, items: OrderItem[], members: User[]): Order {
     total: Number(row.total),
     payment_method: row.payment_method,
     payment_status: row.payment_status,
-    notes: row.notes,
+    notes,
     source: row.source || 'store',
     priority: row.priority || 'normal',
-    delivery_method: row.delivery_method || 'personal',
+    delivery_method: deliveryMethod,
     bus_route: row.bus_route_company
       ? { company: row.bus_route_company, route: row.bus_route_destination || '', terminal: '', notes: row.bus_route_notes }
       : undefined,
@@ -113,6 +133,7 @@ function rowToOrder(row: any, items: OrderItem[], members: User[]): Order {
     product_photos: row.product_photos || [],
     package_photo: row.package_photo,
     payment_photo: row.payment_photo,
+    shipping_receipt_photo: row.shipping_receipt_photo,
     created_by: row.created_by,
     assigned_delivery_id: row.assigned_delivery_id,
     assigned_delivery: delivery,
@@ -214,6 +235,8 @@ export async function fetchAllData() {
 
 // ===== WRITE OPERATIONS =====
 
+const DM_PREFIX = '[[DM:';
+
 export async function syncAddOrder(order: Order) {
   if (!isSupabaseConfigured) return;
   _pendingWrites++;
@@ -222,15 +245,65 @@ export async function syncAddOrder(order: Order) {
     const row = orderToRow(order);
     const { error } = await supabase.from('orders').upsert(row);
     if (error) {
-      console.error('SYNC ERROR syncAddOrder:', error.message, error.details);
-      return;
+      if (error.code === '23514' && order.delivery_method !== 'personal') {
+        const fallbackRow = { ...row };
+        const realMethod = fallbackRow.delivery_method;
+        delete fallbackRow.delivery_method;
+        fallbackRow.notes = `${DM_PREFIX}${realMethod}]]${fallbackRow.notes || ''}`;
+        const { error: retryErr } = await supabase.from('orders').upsert(fallbackRow);
+        if (retryErr) {
+          console.error('SYNC ERROR syncAddOrder retry:', retryErr.message);
+          _failedOrders.set(order.id, order);
+          return;
+        }
+      } else {
+        console.error('SYNC ERROR syncAddOrder:', error.message, error.details);
+        _failedOrders.set(order.id, order);
+        return;
+      }
     }
+    _failedOrders.delete(order.id);
     if (order.items.length > 0) {
       const { error: itemErr } = await supabase.from('order_items').upsert(order.items.map(itemToRow));
       if (itemErr) console.error('SYNC ERROR syncAddOrder items:', itemErr.message);
     }
   } finally {
     _pendingWrites--;
+  }
+}
+
+export async function retrySyncLocalOrders(localOrders: Order[], remoteIds: Set<string>) {
+  if (!isSupabaseConfigured) return;
+  const unsyncedOrders = localOrders.filter((o) => !remoteIds.has(o.id));
+  if (unsyncedOrders.length === 0) return;
+
+  await detectColumns(true);
+
+  for (const order of unsyncedOrders) {
+    _pendingWrites++;
+    try {
+      const row = orderToRow(order);
+      let { error } = await supabase.from('orders').upsert(row);
+      if (error && error.code === '23514' && order.delivery_method !== 'personal') {
+        const fallbackRow = { ...row };
+        const realMethod = fallbackRow.delivery_method;
+        delete fallbackRow.delivery_method;
+        fallbackRow.notes = `${DM_PREFIX}${realMethod}]]${fallbackRow.notes || ''}`;
+        const res = await supabase.from('orders').upsert(fallbackRow);
+        error = res.error;
+      }
+      if (error) {
+        console.error('RETRY SYNC failed:', order.id, error.message);
+        _failedOrders.set(order.id, order);
+        continue;
+      }
+      _failedOrders.delete(order.id);
+      if (order.items.length > 0) {
+        await supabase.from('order_items').upsert(order.items.map(itemToRow));
+      }
+    } finally {
+      _pendingWrites--;
+    }
   }
 }
 
@@ -248,8 +321,9 @@ export async function syncUpdateOrder(id: string, updates: Partial<Order>) {
     if (updates.total !== undefined) row.total = updates.total;
     if (updates.payment_method !== undefined) row.payment_method = updates.payment_method;
     if (updates.priority !== undefined) row.priority = updates.priority;
-    if (has('package_photo') && updates.package_photo !== undefined) row.package_photo = updates.package_photo;
-    if (has('payment_photo') && updates.payment_photo !== undefined) row.payment_photo = updates.payment_photo;
+    if (updates.package_photo !== undefined) row.package_photo = updates.package_photo;
+    if (updates.payment_photo !== undefined) row.payment_photo = updates.payment_photo;
+    if (updates.shipping_receipt_photo !== undefined) row.shipping_receipt_photo = updates.shipping_receipt_photo;
     const { error } = await supabase.from('orders').update(row).eq('id', id);
     if (error) {
       console.error('SYNC ERROR syncUpdateOrder:', error.message, error.details);
